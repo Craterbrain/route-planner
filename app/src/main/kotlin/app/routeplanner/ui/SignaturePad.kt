@@ -47,11 +47,16 @@ class SignaturePad(ctx: Context) : View(ctx) {
                 for (i in 0 until e.historySize) p.lineTo(e.getHistoricalX(i), e.getHistoricalY(i))
                 p.lineTo(e.x, e.y)
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> current?.let { strokes += it; current = null; onChange?.invoke() }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                current?.let { strokes += it; current = null; onChange?.invoke() }
+                if (e.actionMasked == MotionEvent.ACTION_UP) performClick() // accessibility services expect a click for a completed touch
+            }
         }
         invalidate()
         return true
     }
+
+    override fun performClick(): Boolean { super.performClick(); return true }
 
     /** Writes a PNG of the signature; false if nothing was drawn or the write failed. */
     fun savePng(file: File): Boolean {

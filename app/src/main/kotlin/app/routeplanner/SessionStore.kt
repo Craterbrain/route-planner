@@ -29,18 +29,30 @@ object SessionStore {
         commit(ctx)
     }
 
-    /** Persist and notify; call after every mutation of [session]. */
+    // One writer thread, so saves land in order. Each commit encodes on the caller's thread (the session is only
+    // touched from the main thread) and hands the text over; a save that has been overtaken by a newer one is skipped.
+    private val writer = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "route-writer") }
+    private val latest = java.util.concurrent.atomic.AtomicInteger()
+
+    /** Persist and notify; call after every mutation of [session]. The notification is immediate, the disk write is not. */
     fun commit(ctx: Context) {
-        val s = session
         val f = file(ctx)
-        if (s == null) f.delete()
-        else {
-            // Write-then-rename so a crash mid-write never leaves a truncated route.
-            val tmp = File(f.parentFile, f.name + ".tmp")
-            tmp.writeText(encode(s).toString())
-            if (!tmp.renameTo(f)) { f.delete(); tmp.renameTo(f) }
-        }
+        val json = session?.let { encode(it).toString() } // null = no route: delete the file
+        val version = latest.incrementAndGet()
+        writer.execute { if (version == latest.get()) write(f, json) }
         listeners.toList().forEach { it() }
+    }
+
+    private fun write(f: File, json: String?) {
+        runCatching {
+            if (json == null) f.delete()
+            else {
+                // Write-then-rename so a crash mid-write never leaves a truncated route.
+                val tmp = File(f.parentFile, f.name + ".tmp")
+                tmp.writeText(json)
+                if (!tmp.renameTo(f)) { f.delete(); tmp.renameTo(f) }
+            }
+        }.onFailure { android.util.Log.w(NetStatus.TAG, "route save failed: ${it.javaClass.simpleName}") }
     }
 
     fun load(ctx: Context) {

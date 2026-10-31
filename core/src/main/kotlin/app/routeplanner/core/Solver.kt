@@ -85,28 +85,81 @@ object Solver {
         return order
     }
 
+    /** Safety net for very long routes on a slow phone: local search stops improving after this long. */
+    const val SEARCH_BUDGET_MS = 3000L
+
+    /**
+     * Same cost as [evaluate], without building any objects, and gives up as soon as the running cost reaches
+     * [limit] (every term only ever adds, so a candidate that is already as bad as the best can't win).
+     * Returns [Double.POSITIVE_INFINITY] when it gives up.
+     */
+    private class Costs(stops: List<Stop>, private val dur: Array<DoubleArray>, private val t0: Double, private val endIdx: Int?) {
+        private val open = DoubleArray(stops.size) { stops[it].window?.first?.toDouble() ?: Double.NEGATIVE_INFINITY }
+        private val close = DoubleArray(stops.size) { stops[it].window?.last?.toDouble() ?: Double.POSITIVE_INFINITY }
+        private val service = DoubleArray(stops.size) { stops[it].serviceSec.toDouble() }
+        private val rank = IntArray(stops.size) { rank(stops[it]) }
+
+        fun cost(order: IntArray, limit: Double = Double.POSITIVE_INFINITY): Double {
+            var t = t0
+            var prev = 0
+            var cost = 0.0
+            var maxRank = 0
+            for (idx in order) {
+                val travel = dur[prev][idx + 1]
+                t += travel
+                cost += travel
+                if (t < open[idx]) { cost += open[idx] - t; t = open[idx] }
+                if (t > close[idx]) cost += (t - close[idx]) * LATE_PENALTY
+                t += service[idx]
+                val r = rank[idx]
+                if (r < maxRank) cost += PLACEMENT_PENALTY else maxRank = r
+                if (cost >= limit) return Double.POSITIVE_INFINITY
+                prev = idx + 1
+            }
+            if (endIdx != null && order.isNotEmpty()) cost += dur[prev][endIdx]
+            return if (cost >= limit) Double.POSITIVE_INFINITY else cost
+        }
+    }
+
+    private fun reverse(a: IntArray, i: Int, j: Int) {
+        var l = i; var r = j
+        while (l < r) { val t = a[l]; a[l] = a[r]; a[r] = t; l++; r-- }
+    }
+
+    /** Takes the element at [from] out and puts it back at index [to] of the shortened array (what List.add(to, removeAt(from)) did). */
+    private fun move(a: IntArray, from: Int, to: Int) {
+        val x = a[from]
+        if (from < to) System.arraycopy(a, from + 1, a, from, to - from) else System.arraycopy(a, to, a, to + 1, from - to)
+        a[to] = x
+    }
+
     fun solveOrder(stops: List<Stop>, dur: Array<DoubleArray>, t0: Double = 0.0, endIdx: Int? = null): List<Int> {
         if (stops.size < 2) return stops.indices.toList()
-        var order = construct(stops, dur, t0)
-        var best = evaluate(order, stops, dur, t0, endIdx).cost
+        val order = construct(stops, dur, t0).toIntArray()
+        val costs = Costs(stops, dur, t0, endIdx)
+        val n = order.size
+        var best = costs.cost(order)
+        val deadline = System.nanoTime() + SEARCH_BUDGET_MS * 1_000_000L
         var improved = true
         var rounds = 0
-        while (improved && rounds++ < 100) {
+        while (improved && rounds++ < 100 && System.nanoTime() < deadline) {
             improved = false
-            for (i in 0 until order.size - 1) for (j in i + 1 until order.size) {
-                val cand = order.subList(0, i) + order.subList(i, j + 1).reversed() + order.subList(j + 1, order.size)
-                val c = evaluate(cand, stops, dur, t0, endIdx).cost
-                if (c < best - 1e-9) { order = cand.toMutableList(); best = c; improved = true }
+            // 2-opt: reverse a stretch; keep it if the route got cheaper, otherwise undo.
+            for (i in 0 until n - 1) for (j in i + 1 until n) {
+                reverse(order, i, j)
+                val c = costs.cost(order, best - 1e-9)
+                if (c < best - 1e-9) { best = c; improved = true } else reverse(order, i, j)
             }
-            for (i in order.indices) for (j in order.indices) {
+            // or-opt: move one stop elsewhere.
+            for (i in 0 until n) for (j in 0 until n) {
                 if (i == j) continue
-                val cand = order.toMutableList()
-                cand.add(j, cand.removeAt(i))
-                val c = evaluate(cand, stops, dur, t0, endIdx).cost
-                if (c < best - 1e-9) { order = cand; best = c; improved = true }
+                move(order, i, j)
+                val c = costs.cost(order, best - 1e-9)
+                if (c < best - 1e-9) { best = c; improved = true } else move(order, j, i)
             }
+            if (System.nanoTime() >= deadline) break
         }
-        return order
+        return order.toList()
     }
 
     private fun points(start: LatLng, stops: List<Stop>, end: LatLng?) =

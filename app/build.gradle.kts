@@ -11,14 +11,19 @@ android {
         applicationId = "app.routeplanner"
         minSdk = 26
         targetSdk = 35
-        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
-        versionCode = 14
-        versionName = "0.7.7"
+        // `-Pabis=arm64-v8a` builds for 64-bit phones only (about 30 MB smaller); the default keeps 32-bit ARM too.
+        ndk { abiFilters += (project.findProperty("abis") as String? ?: "arm64-v8a,armeabi-v7a").split(",") }
+        versionCode = 15
+        versionName = "0.7.8"
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // `./gradlew :app:assembleRelease -Pshrink` turns on R8 + resource shrinking. Off by default: it has not been
+            // run on a device, and JNI-backed libraries (MapLibre, Valhalla, ML Kit) are the usual casualties.
+            isMinifyEnabled = project.hasProperty("shrink")
+            isShrinkResources = project.hasProperty("shrink")
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("debug")
         }
     }

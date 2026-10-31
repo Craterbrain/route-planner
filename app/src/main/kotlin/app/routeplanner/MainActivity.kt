@@ -47,6 +47,7 @@ import java.io.File
  */
 class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.Listener {
     private lateinit var prefs: Prefs
+    private val offlineMaps by lazy { OfflineMapsFlow(this, { routeArea() }, { currentStart()?.label }, ::snack) }
     private lateinit var actions: RouteActions
     private lateinit var root: CoordinatorLayout
     private lateinit var topBar: MaterialCardView
@@ -284,7 +285,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
                     7 -> showSettings()
                     8 -> clearRoute()
                     9 -> showPermissions()
-                    10 -> exportReport()
+                    10 -> SessionStore.session?.let { ProofExport.share(this@MainActivity, it.stops, it.packages, ::snack) }
                     11 -> scanLabel()
                     12 -> startActivityForResult(Intent(this@MainActivity, ScanActivity::class.java).putExtra(ScanActivity.EXTRA_MODE, ScanActivity.MODE_FIND), REQ_SCAN_FIND)
                 }
@@ -731,29 +732,6 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         }.onFailure { Toast.makeText(this, "No camera app available", Toast.LENGTH_SHORT).show() }
     }
 
-    /** ⋮ → Export delivery report: a zip (CSV + proof photos + signatures) handed to the share sheet. */
-    private fun exportReport() {
-        val s = SessionStore.session ?: return
-        val stops = s.stops
-        val packages = s.packages
-        val busy = Dialogs.busy(this, "Building report…")
-        Thread {
-            val r = runCatching { ProofExport.build(this, stops, packages) }
-            runOnUiThread {
-                busy.dismiss()
-                r.onSuccess { zip ->
-                    val uri = FileProvider.getUriForFile(this, "$packageName.files", zip)
-                    startActivity(Intent.createChooser(
-                        Intent(Intent.ACTION_SEND).setType("application/zip")
-                            .putExtra(Intent.EXTRA_STREAM, uri)
-                            .putExtra(Intent.EXTRA_SUBJECT, "Delivery report")
-                            .putExtra(Intent.EXTRA_TEXT, DeliveryReport.summary(stops))
-                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share delivery report"))
-                }.onFailure { snack("Couldn't build the report: ${it.message}") }
-            }
-        }.start()
-    }
-
     /** ⋮ → Floating button: a real on/off toggle. */
     private fun toggleOverlay() {
         if (OverlayService.running) { OverlayService.stop(this); snack("Floating button off"); return }
@@ -800,7 +778,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
                 startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), REQ_ADDRESSES)
             },
             manageRecents = { manageRecents() },
-            openOfflineMaps = { showOfflineMaps() },
+            openOfflineMaps = { offlineMaps.show() },
             importRoads = {
             startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), REQ_TILES)
         }) { m ->
@@ -814,48 +792,13 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         }
     }
 
-    // ---- Offline maps ----------------------------------------------------------
+    // ---- Offline maps (the dialogs live in OfflineMapsFlow) ---------------------
 
     /** The area to save: everything the route touches, padded so the edges aren't the screen edge. */
     private fun routeArea(): Bounds? {
         val s = SessionStore.session
         val pts = s?.stops?.map { it.target }.orEmpty() + listOfNotNull(currentStart()?.point, endAddress())
         return Bounds.around(pts)?.padded(0.25, 0.02)
-    }
-
-    private fun showOfflineMaps() {
-        OfflineMaps.list(this) { saved ->
-            if (isFinishing || isDestroyed) return@list
-            OfflineMapsDialog.show(this, saved, canDownload = routeArea() != null,
-                onDownload = { confirmOfflineDownload() },
-                onDelete = { s -> Dialogs.confirm(this, "Delete \"${s.name}\"?", "The saved map is removed from this phone.", "Delete") {
-                    OfflineMaps.delete(s) { snack("Offline map deleted"); showOfflineMaps() }
-                } })
-        }
-    }
-
-    private fun confirmOfflineDownload() {
-        val area = routeArea() ?: run { snack("Set a starting point first so there's an area to save."); return }
-        val plan = OfflineMaps.plan(area)
-        val name = (currentStart()?.label?.let { splitAddress(it).first } ?: "Route area") + " area"
-        val msg = "About %.0f × %.0f km, zoom %d–%d, roughly %d tiles per style (light and dark). Needs a connection and stays on this phone."
-            .format(java.util.Locale.ROOT, plan.widthKm, plan.heightKm, plan.minZoom, plan.maxZoom, plan.tiles) +
-            if (plan.maxZoom < OfflineMaps.MAX_ZOOM) "\n\nThe area is large, so street-level detail is limited to zoom ${plan.maxZoom}." else ""
-        Dialogs.confirm(this, "Download offline map?", msg, "Download") { runOfflineDownload(name, plan) }
-    }
-
-    private fun runOfflineDownload(name: String, plan: OfflineMaps.Plan) {
-        val text = android.widget.TextView(this).apply { setPadding(dp(24), dp(8), dp(24), 0); text = "Starting…" }
-        var job: OfflineMaps.Job? = null
-        val dlg = MaterialAlertDialogBuilder(this).setTitle("Downloading map").setView(text).setCancelable(false)
-            .setNegativeButton("Cancel") { _, _ -> job?.cancel(); snack("Download cancelled") }.show()
-        job = OfflineMaps.download(this, name, plan,
-            onProgress = { p -> text.text = "${p.percent}% · ${p.text}" },
-            onDone = { r ->
-                if (dlg.isShowing && !isDestroyed) dlg.dismiss()
-                r.onSuccess { snack("Offline map saved: $name") }
-                    .onFailure { snack("Map download failed: ${it.message}") }
-            })
     }
 
     /** Settings → recent searches: remove one, or clear all. */

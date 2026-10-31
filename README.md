@@ -2,6 +2,8 @@
 
 A Circuit-style delivery route optimizer, targeting **Android**. Design brief: [docs/idea.md](docs/idea.md). UI/UX research on Circuit (now Spoke Route Planner) and the feature checklist: [docs/circuit-research.md](docs/circuit-research.md).
 
+See [docs/architecture.md](docs/architecture.md) for the architecture review, measurements and known debts.
+
 ## Layout
 
 | Path | What |
@@ -80,6 +82,8 @@ An imported address pack (`addresses.sqlite`, one US state, built by `tools/buil
 Without network the route list, stop editing, delivery/proof, the floating button and on-device Valhalla road times all work. The map falls back to pins on a plain background. With an imported address pack, typed addresses and spreadsheet rows still resolve offline; without one the search bar says it needs network (long-press the map or import a CSV with lat/lng instead).
 
 ## Not yet verified on a device
+
+**0.7.8**: architecture/performance pass (see docs/architecture.md): faster allocation-free solver with a 3 s search cap, route saves off the main thread, map label bitmaps no longer accumulate, local-suggestion data cached, lint clean, report export and offline-map screens moved out of `MainActivity`, and `-Pabis=arm64-v8a` for a 48 MB build. No behaviour changes intended; since nothing here could be run on a device, re-check the basics (add stops, optimize, deliver, close and reopen the app to confirm the route is restored).
 
 **0.7.7**: barcodes are optional everywhere. A label with no readable barcode adds its package exactly as before (just without saved codes), and the parcel check's "Not on this route" screen says how many packages were added without a barcode and so can't be recognised that way.
 

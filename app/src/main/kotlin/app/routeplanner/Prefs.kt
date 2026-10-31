@@ -9,7 +9,13 @@ import java.util.Locale
 
 /** Small settings + per-address memory store (SharedPreferences, no DB yet). */
 class Prefs(ctx: Context) {
-    companion object { const val RECENT_MAX = 50 }
+    companion object {
+        const val RECENT_MAX = 50
+        // Parsed copies of the recents list and the remembered pins, shared by every Prefs instance (the activity
+        // and the overlay service each make one) and replaced whenever either is written.
+        @Volatile private var recentsCache: List<Suggestion>? = null
+        @Volatile private var pinsCache: Map<String, LatLng>? = null
+    }
 
     private val sp = ctx.applicationContext.getSharedPreferences("route-planner", Context.MODE_PRIVATE)
 
@@ -76,19 +82,22 @@ class Prefs(ctx: Context) {
 
     /** Recently picked places (newest first, max [RECENT_MAX]); local suggestions. */
     var recents: List<Suggestion>
-        get() = runCatching {
+        // Local suggestions read this on every keystroke, so it is parsed once and kept in memory (shared by every Prefs instance).
+        get() = recentsCache ?: runCatching {
             val a = JSONArray(sp.getString("recents", "[]"))
             (0 until a.length()).map { i ->
                 val o = a.getJSONObject(i)
                 Suggestion(o.getString("t"), o.optString("s", ""),
                     if (o.has("lat")) LatLng(o.getDouble("lat"), o.getDouble("lng")) else null, SuggestSource.LOCAL)
             }
-        }.getOrDefault(emptyList())
+        }.getOrDefault(emptyList()).also { recentsCache = it }
         set(v) {
+            val kept = v.take(RECENT_MAX)
             val a = JSONArray()
-            v.take(RECENT_MAX).forEach { r ->
+            kept.forEach { r ->
                 a.put(JSONObject().put("t", r.title).put("s", r.subtitle).apply { r.point?.let { put("lat", it.lat).put("lng", it.lng) } })
             }
+            recentsCache = kept
             sp.edit().putString("recents", a.toString()).apply()
         }
 
@@ -98,10 +107,12 @@ class Prefs(ctx: Context) {
     }
 
     /** Every remembered drop-off (normalized address, point): local suggestions. */
-    fun rememberedPins(): List<Pair<String, LatLng>> = runCatching {
+    fun rememberedPins(): List<Pair<String, LatLng>> = pins().map { it.key to it.value }
+
+    private fun pins(): Map<String, LatLng> = pinsCache ?: runCatching {
         val o = JSONObject(sp.getString("pins", "{}")!!)
-        o.keys().asSequence().mapNotNull { k -> o.optJSONObject(k)?.let { k to LatLng(it.getDouble("lat"), it.getDouble("lng")) } }.toList()
-    }.getOrDefault(emptyList())
+        o.keys().asSequence().mapNotNull { k -> o.optJSONObject(k)?.let { k to LatLng(it.getDouble("lat"), it.getDouble("lng")) } }.toMap()
+    }.getOrDefault(emptyMap()).also { pinsCache = it }
 
     /** Show the MapLibre map above the stop list (off = list only, no tile downloads). */
     var showMap: Boolean
@@ -110,12 +121,13 @@ class Prefs(ctx: Context) {
 
     /** Drop-off pins the driver corrected, remembered per normalized address. */
     val addressMemory = object : AddressMemory {
-        private fun read() = JSONObject(sp.getString("pins", "{}")!!)
-        override fun access(address: String): LatLng? =
-            read().optJSONObject(normalizeAddress(address))?.let { LatLng(it.getDouble("lat"), it.getDouble("lng")) }
+        override fun access(address: String): LatLng? = pins()[normalizeAddress(address)]
 
         override fun remember(address: String, access: LatLng) {
-            val o = read().put(normalizeAddress(address), JSONObject().put("lat", access.lat).put("lng", access.lng))
+            val all = pins() + (normalizeAddress(address) to access)
+            pinsCache = all
+            val o = JSONObject()
+            all.forEach { (k, p) -> o.put(k, JSONObject().put("lat", p.lat).put("lng", p.lng)) }
             sp.edit().putString("pins", o.toString()).apply()
         }
     }

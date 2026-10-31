@@ -111,6 +111,8 @@ class RouteMap(
     private var lastError: String? = null
     private var firstFrame = false
     private val images = HashSet<String>()
+    /** Label bitmaps in the style right now. ETAs change on every re-plan, so old ones are removed or they pile up. */
+    private val labelImages = HashSet<String>()
 
     private enum class Basemap { LOADING, OK, FALLBACK }
 
@@ -319,6 +321,7 @@ class RouteMap(
 
     private fun onStyle(s: Style) {
         images.clear()
+        labelImages.clear()
         addLayers(s)
         style = s
         notice.text = ""
@@ -494,14 +497,18 @@ class RouteMap(
         st.getSourceAs<GeoJsonSource>(SRC_PINS)?.setGeoJson(FeatureCollection.fromFeatures(pins + listOfNotNull(startPin, endPin)))
 
         // Labels: arrival time for every pending stop; the current stop also gets its street.
+        val usedLabels = HashSet<String>()
         val labels = if (s == null) emptyList() else stops.filter { it.status == Status.PENDING && it.etaSec > 0 }.map { stop ->
             val isCur = stop.id == cur?.id
             val time = ctx.clock(s, stop.etaSec)
             val text = if (isCur) "$time · ${stop.address.substringBefore(',').take(22)}" else time
             val key = "rp-label-$text-$isCur"
+            usedLabels += key
             if (images.add(key)) st.addImage(key, labelImage(text, isCur))
             Feature.fromGeometry(Point.fromLngLat(stop.target.lng, stop.target.lat)).apply { addStringProperty("icon", key) }
         }
+        for (old in labelImages - usedLabels) { st.removeImage(old); images.remove(old) }
+        labelImages.clear(); labelImages += usedLabels
         st.getSourceAs<GeoJsonSource>(SRC_LABELS)?.setGeoJson(FeatureCollection.fromFeatures(labels))
 
         // Before any stop is done the line begins at the start (the depot).

@@ -142,7 +142,8 @@ class ScanActivity : AppCompatActivity() {
         }, ContextCompat.getMainExecutor(this))
     }
 
-    @androidx.camera.core.ExperimentalGetImage
+    // Uses ImageProxy.image (the frame ML Kit reads), which CameraX marks experimental: opted in here, not passed on.
+    @androidx.annotation.OptIn(markerClass = [androidx.camera.core.ExperimentalGetImage::class])
     private fun analyze(proxy: ImageProxy) {
         val now = System.currentTimeMillis()
         val media = proxy.image
