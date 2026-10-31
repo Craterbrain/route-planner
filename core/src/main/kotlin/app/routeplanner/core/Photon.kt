@@ -51,7 +51,8 @@ class PhotonGeocoder(
     /** Search URL for [query] (exposed for tests). */
     fun searchUrl(query: String, limit: Int, near: LatLng? = bias()): String =
         "$base/api/?q=${enc(query.trim())}&limit=$limit&lang=$lang" +
-            (near?.let { "&lat=${it.lat}&lon=${it.lng}" } ?: "")
+            // zoom 10 ≈ a ~50 km focus; low location_bias_scale = distance matters more than prominence.
+            (near?.let { "&lat=${it.lat}&lon=${it.lng}&zoom=10&location_bias_scale=0.1" } ?: "")
 
     /** Up to [limit] matches; empty list = no matches. Throws on network/HTTP failure. */
     fun search(query: String, limit: Int = 5, near: LatLng? = bias()): List<Suggestion> {

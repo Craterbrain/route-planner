@@ -48,3 +48,14 @@ data class Pkg(
     val truckZone: String? = null,
     val status: Status = Status.PENDING,
 )
+
+/**
+ * Where the route begins (the depot, matrix index 0). [live] = "my location":
+ * [point] is the last fix, refreshed by the app; otherwise a fixed address or map pin.
+ */
+data class RouteStart(val point: LatLng, val label: String, val live: Boolean = false, val fixAtMs: Long? = null, val accuracyM: Float? = null)
+
+/** Where the route ends: at the last stop (no return leg), back at the start, or at a chosen point. */
+enum class EndMode { LAST_STOP, ROUND_TRIP, ADDRESS }
+
+data class RouteEnd(val mode: EndMode = EndMode.LAST_STOP, val point: LatLng? = null, val label: String? = null)

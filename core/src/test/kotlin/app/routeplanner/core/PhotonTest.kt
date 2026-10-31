@@ -37,7 +37,7 @@ class PhotonTest {
             userAgent = "test-agent", bias = { LatLng(35.95, -85.03) })
         val r = g.search("1223 main", 3)
         assertEquals(3, r.size)
-        assertEquals("https://geo.example.com/api/?q=1223+main&limit=3&lang=en&lat=35.95&lon=-85.03", seenUrl)
+        assertEquals("https://geo.example.com/api/?q=1223+main&limit=3&lang=en&lat=35.95&lon=-85.03&zoom=10&location_bias_scale=0.1", seenUrl)
         assertEquals("test-agent", seenUa)
     }
 

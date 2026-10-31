@@ -23,10 +23,11 @@ data class RouteSummary(
     fun projectedEta(s: Stop): Int = if (s.status == Status.PENDING) s.etaSec + driftSec else s.etaSec
 
     companion object {
-        fun of(stops: List<Stop>, nowSec: Int): RouteSummary {
+        /** [endLegSec]/[endLegMeters]: drive from the last stop to the route end (round trip etc.). */
+        fun of(stops: List<Stop>, nowSec: Int, endLegSec: Int = 0, endLegMeters: Int = 0): RouteSummary {
             val pending = stops.filter { it.status == Status.PENDING }
             val drift = pending.firstOrNull()?.let { maxOf(0, nowSec - it.etaSec) } ?: 0
-            val finish = pending.lastOrNull()?.let { it.etaSec + it.serviceSec + drift }
+            val finish = pending.lastOrNull()?.let { it.etaSec + it.serviceSec + drift + endLegSec }
                 ?: stops.mapNotNull { s -> s.takeIf { it.status != Status.PENDING }?.let { it.etaSec + it.serviceSec } }.maxOrNull()
                 ?: nowSec
             return RouteSummary(
@@ -34,8 +35,8 @@ data class RouteSummary(
                 delivered = stops.count { it.status == Status.COMPLETED },
                 failed = stops.count { it.status == Status.FAILED || it.status == Status.SKIPPED },
                 pending = pending.size,
-                totalMeters = stops.sumOf { it.legMeters },
-                remainingMeters = pending.sumOf { it.legMeters },
+                totalMeters = stops.sumOf { it.legMeters } + endLegMeters,
+                remainingMeters = if (pending.isEmpty()) 0 else pending.sumOf { it.legMeters } + endLegMeters,
                 remainingSec = if (pending.isEmpty()) 0 else maxOf(0, finish - nowSec),
                 finishSec = finish,
                 driftSec = drift,

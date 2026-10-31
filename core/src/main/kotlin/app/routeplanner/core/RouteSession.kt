@@ -32,6 +32,34 @@ class RouteSession(
     /** Stops were added/moved/edited since the last optimize, so ETAs are stale. */
     var dirty: Boolean = false
 
+    /** Route start (depot). Required before planning; null only for routes saved by old versions. */
+    var start: RouteStart? = null
+
+    /** Where the route ends (default: at the last stop). */
+    var end: RouteEnd = RouteEnd()
+
+    /** Final leg to the end point from the last plan (0 when the route ends at the last stop). */
+    var endLegSec: Int = 0
+    var endLegMeters: Int = 0
+
+    /** End point for planning, or null when the route just ends at the last stop. */
+    fun endPoint(): LatLng? = when (end.mode) {
+        EndMode.LAST_STOP -> null
+        EndMode.ROUND_TRIP -> start?.point
+        EndMode.ADDRESS -> end.point
+    }
+
+    /**
+     * Where (re-)planning starts. Before the driver has finished any stop the
+     * depot is the route start; once under way it is the driver's current
+     * position [driver], else the last finished stop, else the start.
+     */
+    fun planOrigin(driver: LatLng?): LatLng? {
+        val underway = started && stops.any { it.status != Status.PENDING }
+        return if (!underway) start?.point ?: driver
+        else driver ?: stops.lastOrNull { it.status != Status.PENDING }?.access ?: start?.point
+    }
+
     val current: Stop? get() = stops.getOrNull(cursor)
     val done: Boolean get() = stops.all { it.status != Status.PENDING }
 
@@ -219,7 +247,8 @@ class RouteSession(
     fun planRemaining(provider: MatrixProvider, from: LatLng, nowMs: Long = now(), optimize: Boolean = true, extra: List<Stop> = emptyList()): Solver.Result {
         val pending = stops.filter { it.status == Status.PENDING } + extra
         val t0 = clockSec(nowMs).coerceAtLeast(0)
-        return if (optimize) Solver.optimize(from, pending, provider, t0) else Solver.schedule(from, pending, provider, t0)
+        val end = endPoint()
+        return if (optimize) Solver.optimize(from, pending, provider, t0, end) else Solver.schedule(from, pending, provider, t0, end)
     }
 
     /**
@@ -249,6 +278,8 @@ class RouteSession(
         val known = packages.map { it.id }.toSet()
         packages = packages + newPackages.filter { it.id !in known }
         cursor = curId?.takeIf { keepCursor }?.let { indexOf(it) } ?: firstPending() ?: 0
+        endLegSec = plan.endLegSec
+        endLegMeters = plan.endLegMeters
         dirty = false
     }
 
@@ -260,5 +291,5 @@ class RouteSession(
     }
 
     /** Route summary bar figures at [nowMs]. */
-    fun summary(nowMs: Long = now()): RouteSummary = RouteSummary.of(stops, clockSec(nowMs))
+    fun summary(nowMs: Long = now()): RouteSummary = RouteSummary.of(stops, clockSec(nowMs), endLegSec, endLegMeters)
 }
