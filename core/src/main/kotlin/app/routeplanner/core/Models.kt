@@ -56,6 +56,8 @@ data class Pkg(
     val stopId: String,
     val truckZone: String? = null,
     val status: Status = Status.PENDING,
+    /** Everything the camera read from this parcel's label (tracking barcode, DataMatrix, ...): used to recognise the parcel again. */
+    val codes: List<String> = emptyList(),
 )
 
 /**

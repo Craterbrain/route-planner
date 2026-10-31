@@ -256,33 +256,38 @@ class RouteSession(
         return stops.firstOrNull { it.status == Status.PENDING && (normalizeAddress(it.address) == key || AddressMatch.same(it.address, address)) }
     }
 
-    /** Package finder lookup by scanned code: the package and the stop it belongs to. */
-    fun findPackage(code: String): Pair<Pkg, Stop>? {
-        val key = code.trim().uppercase().replace(" ", "")
-        val p = packages.firstOrNull { it.id.trim().uppercase().replace(" ", "") == key } ?: return null
-        return indexOf(p.stopId)?.let { p to stops[it] }
+    /** Package finder lookup by one scanned code: the package and the stop it belongs to. */
+    fun findPackage(code: String): Pair<Pkg, Stop>? = scanMatch(listOf(code))?.takeIf { it.packages.size == 1 }?.let { m ->
+        val p = m.packages.first()
+        indexOf(p.stopId)?.let { p to stops[it] }
     }
 
+    /** Which package(s) a scan (all the values read from one parcel) points to, or null. See [Barcodes.find]. */
+    fun scanMatch(scanned: Collection<String>): Barcodes.Match? = Barcodes.find(packages, scanned)
+
+    /** The stop a package sits at. */
+    fun stopOf(pkg: Pkg): Stop? = indexOf(pkg.stopId)?.let { stops[it] }
+
     /** Appends a stop without re-planning (Circuit adds, then you optimize or update). */
-    fun addStop(stop0: Stop, newPackages: List<Pkg> = emptyList()): Stop {
+    fun addStop(stop0: Stop, newPackages: List<Pkg> = emptyList(), codes: List<String> = emptyList()): Stop {
         val hadPending = stops.any { it.status == Status.PENDING }
         // The next address ID, unless the caller brought a free one (an import numbers rows in file order).
         val stop = if (stop0.entryNo > 0 && stops.none { it.entryNo == stop0.entryNo }) stop0 else stop0.copy(entryNo = entrySeq + 1)
         entrySeq = maxOf(entrySeq, stop.entryNo)
         stops = renumber(stops + stop)
         // Every address holds at least one package; a typed/scanned address gets "<ID>-1".
-        packages = packages + newPackages + listOfNotNull(Pkg("${stop.entryNo}-1", stop.id).takeIf { newPackages.none { p -> p.stopId == stop.id } })
+        packages = packages + newPackages + listOfNotNull(Pkg("${stop.entryNo}-1", stop.id, codes = codes).takeIf { newPackages.none { p -> p.stopId == stop.id } })
         if (!hadPending) cursor = stops.size - 1
         dirty = true
         return stop
     }
 
     /** Another parcel for the same address: package "<ID>-<n>" on [stopId]. */
-    fun addPackageTo(stopId: String): Pkg? {
+    fun addPackageTo(stopId: String, codes: List<String> = emptyList()): Pkg? {
         val st = indexOf(stopId)?.let { stops[it] } ?: return null
         var n = packages.count { it.stopId == stopId } + 1
         while (packages.any { it.id == "${st.entryNo}-$n" }) n++
-        return Pkg("${st.entryNo}-$n", stopId).also { packages = packages + it }
+        return Pkg("${st.entryNo}-$n", stopId, codes = codes).also { packages = packages + it }
     }
 
     // ---- Re-planning -------------------------------------------------------

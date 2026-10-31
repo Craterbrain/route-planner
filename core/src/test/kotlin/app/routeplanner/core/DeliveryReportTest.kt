@@ -25,8 +25,8 @@ class DeliveryReportTest {
         val lines = csv.trimEnd().split("\r\n")
         assertEquals(3, lines.size) // header + 2 finished stops, the pending one is left out
         assertEquals(DeliveryReport.COLUMNS.joinToString(","), lines[0])
-        assertEquals("1,1,\"1 Main St, Crossville\",completed,2023-11-14 22:13,,P1; P2,\"Left, back porch\",a-1.jpg,a-sig.png,", lines[1])
-        assertEquals("2,2,2 Oak Ave,failed,2023-11-14 22:13,Access code needed,,,,,", lines[2])
+        assertEquals("1,1,\"1 Main St, Crossville\",completed,2023-11-14 22:13,,P1; P2,,\"Left, back porch\",a-1.jpg,a-sig.png,", lines[1])
+        assertEquals("2,2,2 Oak Ave,failed,2023-11-14 22:13,Access code needed,,,,,,", lines[2])
         assertEquals("1 delivered, 1 failed, 0 skipped, 1 pending", DeliveryReport.summary(s.stops))
     }
 

@@ -263,7 +263,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         PopupMenu(this, anchor).apply {
             menu.add(0, 1, 0, "Import spreadsheet (CSV)")
             menu.add(0, 11, 0, "Scan label")
-            if (s != null && s.packages.isNotEmpty()) menu.add(0, 12, 0, "Find package")
+            if (s != null && s.packages.isNotEmpty()) menu.add(0, 12, 0, "Check a parcel (scan)")
             if (hasPending) menu.add(0, 2, 0, "Optimize route")
             if (hasPending) menu.add(0, 3, 0, "Update times (keep order)")
             if (hasPending) menu.add(0, 4, 0, "Reverse route")
@@ -665,14 +665,14 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
      * A tapped address from Scan label: confirm it with Google (see [AddressSearch.validate]) and add it
      * straight away; only if nothing confirms it does it go into the search bar to be picked or edited.
      */
-    private fun addScanned(address: String, name: String?) {
+    private fun addScanned(address: String, name: String?, codes: List<String>) {
         val search = actions.addressSearch()
         val busy = Dialogs.busy(this, "Checking the address…")
         actions.background({ search.validate(address) }) { r ->
             busy.dismiss()
             if (isFinishing || isDestroyed) return@background
             val hit = r.getOrNull()
-            if (hit?.point != null) actions.addStopAt(hit.label.ifEmpty { address }, hit.point!!, typed = address, approximate = hit.approximate, notes = name?.let { "For $it" }.orEmpty())
+            if (hit?.point != null) actions.addStopAt(hit.label.ifEmpty { address }, hit.point!!, typed = address, approximate = hit.approximate, notes = name?.let { "For $it" }.orEmpty(), codes = codes)
             else {
                 // Just fill the box: the panel looks it up and offers "Add anyway" if nothing confirms it.
                 this.search.setText(address)
@@ -885,16 +885,9 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
                 searchPanel.submit()
             }
             REQ_PHOTO -> Toast.makeText(this, "Photo attached", Toast.LENGTH_SHORT).show()
-            REQ_SCAN_LABEL -> data?.getStringExtra(ScanActivity.EXTRA_ADDRESS)?.let { addScanned(it, data.getStringExtra(ScanActivity.EXTRA_NAME)) } ?: snack("No address read")
-            REQ_SCAN_FIND -> data?.getStringExtra(ScanActivity.EXTRA_CODE)?.let { code ->
-                val s = SessionStore.session
-                val hit = s?.findPackage(code)
-                if (hit == null) snack("$code is not on this route")
-                else {
-                    val (pkg, stop) = hit
-                    snack("Stop ${stop.optimizedIndex} · ${pkg.truckZone ?: "location not set"}")
-                    openStop(stop.id)
-                }
+            REQ_SCAN_LABEL -> data?.getStringExtra(ScanActivity.EXTRA_ADDRESS)?.let { addScanned(it, data.getStringExtra(ScanActivity.EXTRA_NAME), data.getStringArrayListExtra(ScanActivity.EXTRA_CODES).orEmpty()) } ?: snack("No address read")
+            REQ_SCAN_FIND -> data?.getStringExtra(ScanActivity.EXTRA_STOP_ID)?.let { id ->
+                SessionStore.session?.stop(id)?.let { st -> snack("Stop ${st.optimizedIndex} · ID ${st.entryNo}"); openStop(id) }
             }
         }
     }

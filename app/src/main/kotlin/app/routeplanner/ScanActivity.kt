@@ -21,7 +21,9 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import app.routeplanner.core.Barcodes
 import app.routeplanner.core.LabelParser
+import app.routeplanner.core.Status
 import app.routeplanner.ui.addFull
 import app.routeplanner.ui.button
 import app.routeplanner.ui.compact
@@ -38,15 +40,17 @@ import java.util.concurrent.Executors
 
 /**
  * Camera screen for two jobs, chosen by [EXTRA_MODE]:
- *  - [MODE_LABEL]: read a shipping label's text. The delivery address (the bigger print, or the one after
- *    "SHIP TO") is offered first, a return address second; barcodes and tracking numbers are ignored.
- *    Tapping an address returns it to the caller, which confirms it and adds the stop.
- *  - [MODE_FIND]: scan a package barcode and return it at once (to look up its stop and truck location).
+ *  - [MODE_LABEL]: read a shipping label. The text gives the delivery address (the bigger print, or the one after
+ *    "SHIP TO") first and a return address second; barcodes play no part in the address. Whatever barcodes the
+ *    camera sees meanwhile are collected and returned with the address, to be saved on that package.
+ *  - [MODE_FIND]: check a parcel in your hand. Keeps scanning; every barcode on the parcel is compared with the
+ *    codes saved on the route's packages and the screen says whether it is on this route, and which stop/ID it
+ *    belongs to, or that it isn't. Tap the stop to open it, or just scan the next parcel.
  * The ML Kit models are the bundled ones, so scanning works offline.
  */
 class ScanActivity : AppCompatActivity() {
     private val analysisExecutor = Executors.newSingleThreadExecutor()
-    // Only the recognizer the mode needs is ever created.
+    // Each recognizer is created only when a mode needs it.
     private val barcodes by lazy { BarcodeScanning.getClient() }
     private val text by lazy { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
     private lateinit var results: LinearLayout
@@ -60,6 +64,16 @@ class ScanActivity : AppCompatActivity() {
     private var shownKey = ""
     private var finished = false
 
+    // Barcode values seen recently (value -> last seen ms). A held parcel gives a stable set; old ones age out.
+    private val codeSeen = LinkedHashMap<String, Long>()
+    private var check: Check? = null
+
+    /** Outcome of the latest parcel check (MODE_FIND). */
+    private sealed class Check {
+        class Hit(val match: Barcodes.Match) : Check()
+        class Miss(val codes: Int) : Check()
+    }
+
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         mode = intent.getStringExtra(EXTRA_MODE) ?: MODE_LABEL
@@ -71,7 +85,7 @@ class ScanActivity : AppCompatActivity() {
 
         val top = button("Close", M.attr.materialButtonOutlinedStyle) { setResult(RESULT_CANCELED); finish() }
         hint = label(14f, M.attr.colorOnPrimaryContainer).apply {
-            text = if (mode == MODE_FIND) "Point at a package barcode" else "Point at the shipping label"
+            text = if (mode == MODE_FIND) "Check a parcel: scan a barcode on it" else "Point at the shipping label"
             setPadding(dp(14), dp(8), dp(14), dp(8))
             background = roundRect(M.attr.colorPrimaryContainer, 16)
         }
@@ -136,14 +150,16 @@ class ScanActivity : AppCompatActivity() {
         if (media == null || finished || now - lastRun < 350) { proxy.close(); return }
         lastRun = now
         val image = InputImage.fromMediaImage(media, proxy.imageInfo.rotationDegrees)
-        if (mode == MODE_FIND) {
-            barcodes.process(image)
-                .addOnSuccessListener { list ->
-                    list.firstNotNullOfOrNull { it.rawValue?.trim()?.takeIf { v -> v.isNotEmpty() } }
-                        ?.let { code -> runOnUiThread { finishWith(code = code) } }
-                }
-                .addOnCompleteListener { proxy.close() }
-        } else {
+        val wantText = mode == MODE_LABEL
+        val pending = java.util.concurrent.atomic.AtomicInteger(if (wantText) 2 else 1)
+        fun done() { if (pending.decrementAndGet() == 0) proxy.close() }
+        barcodes.process(image)
+            .addOnSuccessListener { list ->
+                val values = list.mapNotNull { it.rawValue?.trim()?.takeIf { v -> v.isNotEmpty() && v.length <= 300 } }
+                if (values.isNotEmpty()) runOnUiThread { onCodes(values) }
+            }
+            .addOnCompleteListener { done() }
+        if (wantText) {
             text.process(image)
                 .addOnSuccessListener { t ->
                     // Lines in reading order, each with its printed height (the bigger address is the recipient's).
@@ -151,8 +167,29 @@ class ScanActivity : AppCompatActivity() {
                         .map { LabelParser.OcrLine(it.text, (it.boundingBox?.height() ?: 0).toFloat()) }
                     if (lines.isNotEmpty()) runOnUiThread { onLines(lines) }
                 }
-                .addOnCompleteListener { proxy.close() }
+                .addOnCompleteListener { done() }
         }
+    }
+
+    /** Barcode values from the last [windowMs]. */
+    private fun recentCodes(windowMs: Long): List<String> {
+        val now = System.currentTimeMillis()
+        codeSeen.entries.removeAll { now - it.value > 8000 }
+        return codeSeen.filterValues { now - it <= windowMs }.keys.toList()
+    }
+
+    private fun onCodes(values: List<String>) {
+        if (finished) return
+        val now = System.currentTimeMillis()
+        values.forEach { codeSeen[it] = now }
+        if (mode == MODE_FIND) {
+            // Compare everything on the parcel together: a long code in common identifies it.
+            val recent = recentCodes(2500)
+            val session = SessionStore.session
+            val match = session?.scanMatch(recent)
+            check = if (match != null) Check.Hit(match) else Check.Miss(recent.size)
+        }
+        renderResults()
     }
 
     private fun onLines(lines: List<LabelParser.OcrLine>) {
@@ -165,39 +202,86 @@ class ScanActivity : AppCompatActivity() {
         renderResults()
     }
 
-    private fun renderResults() {
+    private fun renderResults() = if (mode == MODE_FIND) renderCheck() else renderLabel()
+
+    private fun renderLabel() {
         val now = System.currentTimeMillis()
         if (now - rankedAt > 6000) ranked = emptyList()
-        val key = ranked.joinToString("|") { it.address + it.role }
+        val codes = recentCodes(6000)
+        val key = ranked.joinToString("|") { it.address + it.role } + "#" + codes.size
         if (key == shownKey && results.childCount > 0) return
         shownKey = key
         results.removeAllViews()
         if (ranked.isEmpty()) {
             results.addFull(label(14f, M.attr.colorOnSurfaceVariant).apply {
-                text = if (mode == MODE_FIND) "Waiting for a barcode…" else "Hold the label steady in view. The delivery address appears here."
+                text = "Hold the label steady in view. The delivery address appears here." +
+                    if (codes.isNotEmpty()) "\nBarcodes read: ${codes.size}" else ""
             })
             return
         }
         val primary = ranked.first()
         results.addFull(label(12f, M.attr.colorPrimary, bold = true).apply {
-            text = if (primary.isReturn) "ONLY A RETURN ADDRESS SEEN" else "DELIVERY ADDRESS"
+            text = (if (primary.isReturn) "ONLY A RETURN ADDRESS SEEN" else "DELIVERY ADDRESS") +
+                if (codes.isNotEmpty()) " · ${codes.size} barcode" + (if (codes.size > 1) "s" else "") + " read" else ""
         })
-        results.addFull(compact(button("Add: ${primary.address}") { finishWith(address = primary.address, name = primary.name) }), topDp = 6)
+        results.addFull(compact(button("Add: ${primary.address}") { finishWith(address = primary.address, name = primary.name, codes = recentCodes(6000)) }), topDp = 6)
         for (c in ranked.drop(1).take(2)) {
             val tag = if (c.isReturn) "Return address" else "Other address"
-            results.addFull(compact(button("$tag: ${c.address}", M.attr.materialButtonOutlinedStyle) { finishWith(address = c.address, name = c.name) }), topDp = 6)
+            results.addFull(compact(button("$tag: ${c.address}", M.attr.materialButtonOutlinedStyle) { finishWith(address = c.address, name = c.name, codes = recentCodes(6000)) }), topDp = 6)
         }
     }
 
-    private fun finishWith(address: String? = null, code: String? = null, name: String? = null) {
+    /** The parcel check card: on the route (which stop), maybe (shared code), or not on the route. */
+    private fun renderCheck() {
+        val c = check
+        val key = when (c) {
+            null -> "wait"
+            is Check.Miss -> "miss${c.codes}"
+            is Check.Hit -> "hit" + c.match.packages.joinToString { it.id } + c.match.certain
+        }
+        if (key == shownKey && results.childCount > 0) return
+        shownKey = key
+        results.removeAllViews()
+        val session = SessionStore.session
+        when (c) {
+            null -> results.addFull(label(14f, M.attr.colorOnSurfaceVariant).apply { text = "Point at a barcode on the parcel in your hand…" })
+            is Check.Miss -> {
+                results.addFull(label(18f, M.attr.colorError, bold = true).apply { text = "✗ Not on this route" })
+                results.addFull(label(13f, M.attr.colorOnSurfaceVariant).apply {
+                    text = "${c.codes} barcode" + (if (c.codes > 1) "s" else "") + " read and none matches a package you added. Try another barcode on the label."
+                }, topDp = 4)
+            }
+            is Check.Hit -> {
+                val m = c.match
+                results.addFull(label(18f, M.attr.colorPrimary, bold = true).apply {
+                    text = if (m.certain) "✓ On this route" else "Could be one of ${m.packages.size} packages (shared code)"
+                })
+                for (p in m.packages.take(4)) {
+                    val st = session?.stopOf(p) ?: continue
+                    val zone = p.truckZone ?: "location not set"
+                    val state = when (st.status) { Status.COMPLETED -> " · already delivered"; Status.FAILED -> " · failed earlier"; else -> "" }
+                    results.addFull(compact(button("Stop ${st.optimizedIndex} · ID ${st.entryNo} · package ${p.id}\n${st.address.substringBefore(',')} · $zone$state") {
+                        finishWith(stopId = st.id)
+                    }), topDp = 6)
+                }
+            }
+        }
+        results.addFull(compact(button("Scan next parcel", M.attr.materialButtonOutlinedStyle) {
+            codeSeen.clear(); check = null; shownKey = ""; renderCheck()
+        }), topDp = 8)
+    }
+
+    private fun finishWith(address: String? = null, name: String? = null, codes: List<String> = emptyList(), stopId: String? = null) {
         if (finished) return
         finished = true
-        setResult(RESULT_OK, Intent().putExtra(EXTRA_ADDRESS, address).putExtra(EXTRA_CODE, code).putExtra(EXTRA_NAME, name))
+        setResult(RESULT_OK, Intent().putExtra(EXTRA_ADDRESS, address).putExtra(EXTRA_NAME, name)
+            .putStringArrayListExtra(EXTRA_CODES, ArrayList(codes.take(8))).putExtra(EXTRA_STOP_ID, stopId))
         finish()
     }
 
     override fun onDestroy() {
-        runCatching { if (mode == MODE_FIND) barcodes.close() else text.close() }
+        runCatching { barcodes.close() }
+        runCatching { if (mode == MODE_LABEL) text.close() }
         analysisExecutor.shutdown()
         super.onDestroy()
     }
@@ -207,7 +291,8 @@ class ScanActivity : AppCompatActivity() {
         const val MODE_LABEL = "label"
         const val MODE_FIND = "find"
         const val EXTRA_ADDRESS = "address"
-        const val EXTRA_CODE = "code"
+        const val EXTRA_CODES = "codes"
+        const val EXTRA_STOP_ID = "stopId"
         const val EXTRA_NAME = "name"
         private const val REQ_CAMERA = 31
     }

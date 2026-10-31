@@ -114,6 +114,7 @@ object SessionStore {
         .put("packages", JSONArray(s.packages.map {
             JSONObject().put("id", it.id).put("stopId", it.stopId)
                 .put("zone", it.truckZone ?: JSONObject.NULL).put("status", it.status.name)
+                .put("codes", JSONArray(it.codes))
         }))
 
     /** Old routes (version 1) had no route clock; their times were shown as if the day began at 08:00. */
@@ -150,7 +151,8 @@ object SessionStore {
         }
         val pkgs = o.optJSONArray("packages")?.let { a ->
             (0 until a.length()).map { a.getJSONObject(it) }.map {
-                Pkg(it.getString("id"), it.getString("stopId"), it.optStr("zone"), it.optEnum<Status>("status") ?: Status.PENDING)
+                Pkg(it.getString("id"), it.getString("stopId"), it.optStr("zone"), it.optEnum<Status>("status") ?: Status.PENDING,
+                    codes = it.optJSONArray("codes")?.let { c -> (0 until c.length()).map { i -> c.getString(i) } }.orEmpty())
             }
         }.orEmpty()
         val startMs = if (o.has("startMs")) o.getLong("startMs") else legacyStartMs()

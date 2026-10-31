@@ -161,25 +161,35 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
      * address is already on the route (still to do) it asks whether this is another package for it instead of
      * silently duplicating it; the result is then null (the answer arrives later). Otherwise returns the new stop's id.
      */
-    fun addStopAt(address: String, door: LatLng, typed: String? = null, approximate: Boolean = false, packageId: String? = null, notes: String = ""): String? {
+    fun addStopAt(address: String, door: LatLng, typed: String? = null, approximate: Boolean = false, packageId: String? = null,
+                  notes: String = "", codes: List<String> = emptyList()): String? {
         val s0 = SessionStore.session
+        // The same parcel scanned twice: say so instead of adding it again.
+        s0?.scanMatch(codes)?.takeIf { it.certain }?.let { m ->
+            val pkg = m.packages.first()
+            val st = s0.stopOf(pkg)
+            if (st != null) {
+                ui.snack("Already on the route: package ${pkg.id} at stop ${st.optimizedIndex} (ID ${st.entryNo})")
+                return st.id
+            }
+        }
         val existing = s0?.pendingStopAt(address)
         if (s0 != null && existing != null) {
-            askAnotherPackage(s0, existing, packageId) { createStop(address, door, typed, approximate, packageId, notes) }
+            askAnotherPackage(s0, existing, packageId, codes) { createStop(address, door, typed, approximate, packageId, notes, codes) }
             return null
         }
-        return createStop(address, door, typed, approximate, packageId, notes)
+        return createStop(address, door, typed, approximate, packageId, notes, codes)
     }
 
     /** "Are you adding another package?" for an address that is already a pending stop. */
-    private fun askAnotherPackage(s: RouteSession, existing: Stop, packageId: String?, addAsNewStop: () -> Unit) {
+    private fun askAnotherPackage(s: RouteSession, existing: Stop, packageId: String?, codes: List<String>, addAsNewStop: () -> Unit) {
         if (!alive) return
         val have = s.finder(existing).size
         MaterialAlertDialogBuilder(act).setTitle("Another package for this address?")
             .setMessage("${existing.address.substringBefore(',')} is already on the route: stop ${existing.optimizedIndex} (ID ${existing.entryNo}), " +
                 "total packages: $have.\n\nAre you adding another package for it?")
             .setPositiveButton("Yes, another package") { _, _ ->
-                if (packageId != null) s.addPackage(Pkg(packageId, existing.id)) else s.addPackageTo(existing.id)
+                if (packageId != null) s.addPackage(Pkg(packageId, existing.id, codes = codes)) else s.addPackageTo(existing.id, codes)
                 SessionStore.commit(act)
                 ui.snack("Stop ${existing.optimizedIndex} (ID ${existing.entryNo}): ${totalPackages(s.finder(existing).size)}")
             }
@@ -187,7 +197,7 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
             .setNeutralButton("Cancel", null).show()
     }
 
-    private fun createStop(address: String, door: LatLng, typed: String?, approximate: Boolean, packageId: String?, notes: String): String {
+    private fun createStop(address: String, door: LatLng, typed: String?, approximate: Boolean, packageId: String?, notes: String, codes: List<String>): String {
         val pin = prefs.addressMemory.access(address) ?: typed?.let { prefs.addressMemory.access(it) }
         // A remembered drop-off pin beats any looked-up position.
         val stop0 = Stop(UUID.randomUUID().toString(), address, door, pin ?: door, notes = notes, approximate = approximate && pin == null)
@@ -196,11 +206,11 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
         val stop = if (s == null) {
             // A route's first stop goes through addStop too, so it gets its address ID and first package.
             val fresh = newSession(emptyList(), emptyList())
-            val added = fresh.addStop(stop0, pkgs)
+            val added = fresh.addStop(stop0, pkgs, codes)
             SessionStore.set(act, fresh)
             added
         } else {
-            s.addStop(stop0, pkgs).also { SessionStore.commit(act) }
+            s.addStop(stop0, pkgs, codes).also { SessionStore.commit(act) }
         }
         val n = SessionStore.session?.stop(stop.id)?.optimizedIndex ?: 1
         replan(optimize = false, showBusy = false)

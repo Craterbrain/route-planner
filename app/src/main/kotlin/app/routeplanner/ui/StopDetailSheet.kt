@@ -150,7 +150,7 @@ class StopDetailSheet(private val act: Activity, private val host: RouteHost, pr
         val pkgs = s.finder(st)
         body.addFull(act.label(15f, bold = true).apply { text = totalPackages(pkgs.size) })
         if (pkgs.isEmpty()) body.addFull(act.label(14f, M.attr.colorOnSurfaceVariant).apply { text = "No packages listed for this stop." })
-        for (p in pkgs) body.addFull(row("${p.id}\n${p.truckZone ?: "Location not set"}", "Set location") {
+        for (p in pkgs) body.addFull(row("${p.id}\n${p.truckZone ?: "Location not set"}" + codesLine(p), "Set location") {
             Dialogs.zone(act, p.id, p.truckZone) { z -> session()?.setZone(p.id, z); commit(); render() }
         })
 
@@ -266,6 +266,14 @@ class StopDetailSheet(private val act: Activity, private val host: RouteHost, pr
                 else -> setWindow(null, null)
             }
         }.setNegativeButton("Cancel", null).show()
+    }
+
+    /** "Scanned: 9361… (+3 more)": what the camera read from the parcel, shown so a driver can compare it by eye. */
+    private fun codesLine(p: Pkg): String {
+        if (p.codes.isEmpty()) return ""
+        // The longest value is almost always the tracking number.
+        val main = p.codes.maxByOrNull { it.length }!!
+        return "\nScanned: " + (if (main.length > 28) main.take(26) + "…" else main) + if (p.codes.size > 1) " (+${p.codes.size - 1} more)" else ""
     }
 
     /** Downsampled proof photo (never loads the full camera image). */
