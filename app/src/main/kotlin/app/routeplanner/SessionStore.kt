@@ -107,6 +107,7 @@ object SessionStore {
                 .put("completedAt", it.completedAt ?: JSONObject.NULL)
                 .put("proofNote", it.proofNote ?: JSONObject.NULL)
                 .put("proofPhoto", it.proofPhoto ?: JSONObject.NULL)
+                .put("proofSignature", it.proofSignature ?: JSONObject.NULL)
                 .put("approximate", it.approximate)
         }))
         .put("packages", JSONArray(s.packages.map {
@@ -140,6 +141,7 @@ object SessionStore {
                     completedAt = if (it.isNull("completedAt")) null else it.optLong("completedAt"),
                     proofNote = it.optStr("proofNote"),
                     proofPhoto = it.optStr("proofPhoto"),
+                    proofSignature = it.optStr("proofSignature"),
                     approximate = it.optBoolean("approximate", false),
                 )
             }

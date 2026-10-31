@@ -115,10 +115,11 @@ class StopDetailSheet(private val act: Activity, private val host: RouteHost, pr
         })
 
         // Proof of delivery (finished stops).
-        if (st.proofNote != null || st.proofPhoto != null) {
+        if (st.proofNote != null || st.proofPhoto != null || st.proofSignature != null) {
             section("Proof of delivery")
             st.proofNote?.let { body.addFull(act.label(15f).apply { text = it }) }
             st.proofPhoto?.let { path -> thumbnail(path)?.let { body.addFull(it, topDp = 6) } }
+            st.proofSignature?.let { path -> thumbnail(path, "Recipient signature")?.let { body.addFull(it, topDp = 6) } }
         }
 
         if (st.status == Status.PENDING) {
@@ -263,7 +264,7 @@ class StopDetailSheet(private val act: Activity, private val host: RouteHost, pr
     }
 
     /** Downsampled proof photo (never loads the full camera image). */
-    private fun thumbnail(path: String): ImageView? {
+    private fun thumbnail(path: String, description: String = "Proof photo"): ImageView? {
         val f = File(path)
         if (!f.exists()) return null
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -275,7 +276,7 @@ class StopDetailSheet(private val act: Activity, private val host: RouteHost, pr
             setImageBitmap(bmp)
             adjustViewBounds = true
             maxHeight = act.dp(240)
-            contentDescription = "Proof photo"
+            contentDescription = description
         }
     }
 }

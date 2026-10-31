@@ -20,6 +20,10 @@ import java.io.File
 /** Small modal dialogs used by the route screen. */
 object Dialogs {
 
+    /** Non-cancellable progress message; call dismiss() when done. */
+    fun busy(ctx: Context, title: String) =
+        MaterialAlertDialogBuilder(ctx).setTitle(title).setCancelable(false).show()
+
     fun confirm(ctx: Context, title: String, message: String?, ok: String, onOk: () -> Unit) {
         MaterialAlertDialogBuilder(ctx).setTitle(title).setMessage(message)
             .setPositiveButton(ok) { _, _ -> onOk() }
@@ -87,10 +91,11 @@ object Dialogs {
     }
 
     /**
-     * Proof of delivery: optional note and photo. [takePhoto] launches the
-     * camera for the given file; [onDone] gets the note and the photo path if one was taken.
+     * Proof of delivery: optional note, photo and recipient signature. [takePhoto] launches the
+     * camera for the given file; [onDone] gets the note and the photo and signature paths that exist.
      */
-    fun proof(ctx: Context, photo: File, takePhoto: (File) -> Unit, onDone: (String, String?) -> Unit) {
+    fun proof(ctx: Context, photo: File, signature: File, takePhoto: (File) -> Unit,
+              onDone: (String, String?, String?) -> Unit) {
         val box = ctx.vertical(padH = 20, padV = 8)
         val note = EditText(ctx).apply {
             hint = "Note (e.g. left behind back porch pot)"
@@ -98,11 +103,36 @@ object Dialogs {
         }
         box.addFull(note)
         box.addFull(ctx.button("Take photo", M.attr.materialButtonOutlinedStyle) { takePhoto(photo) }, topDp = 8)
+        val sign = ctx.button("Get signature", M.attr.materialButtonOutlinedStyle) { }
+        sign.setOnClickListener {
+            signature(ctx, signature) { sign.text = if (signature.exists()) "Signature captured ✓ (tap to redo)" else "Get signature" }
+        }
+        if (signature.exists()) sign.text = "Signature captured ✓ (tap to redo)"
+        box.addFull(sign, topDp = 4)
         MaterialAlertDialogBuilder(ctx).setTitle("Proof of delivery").setView(box)
             .setPositiveButton("Delivered") { _, _ ->
-                onDone(note.text.toString(), photo.takeIf { it.exists() && it.length() > 0 }?.absolutePath)
+                fun path(f: File) = f.takeIf { it.exists() && it.length() > 0 }?.absolutePath
+                onDone(note.text.toString(), path(photo), path(signature))
             }
             .setNegativeButton("Cancel", null).show()
+    }
+
+    /** A full-width pad the recipient signs on; saves a PNG into [file] on Save. */
+    fun signature(ctx: Context, file: File, onSaved: () -> Unit) {
+        val box = ctx.vertical(padH = 20, padV = 8)
+        val pad = SignaturePad(ctx)
+        box.addFull(pad, heightDp = 220)
+        MaterialAlertDialogBuilder(ctx).setTitle("Recipient signature").setView(box)
+            .setPositiveButton("Save", null)
+            .setNeutralButton("Clear", null)
+            .setNegativeButton("Cancel", null).show().also { d ->
+                // Keep the dialog open on an empty Save / on Clear.
+                d.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setOnClickListener {
+                    if (pad.savePng(file)) { onSaved(); d.dismiss() }
+                    else android.widget.Toast.makeText(ctx, "Draw a signature first", android.widget.Toast.LENGTH_SHORT).show()
+                }
+                d.getButton(android.content.DialogInterface.BUTTON_NEUTRAL).setOnClickListener { pad.clear() }
+            }
     }
 
     /** Long-press on the map: add a stop there, or move the current stop's drop-off pin there. */

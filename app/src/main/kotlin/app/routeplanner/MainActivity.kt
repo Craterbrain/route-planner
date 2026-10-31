@@ -264,6 +264,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
             menu.add(0, 6, 0, "Floating button").apply { isCheckable = true; isChecked = OverlayService.running }
             menu.add(0, 9, 0, "Permissions & network")
             menu.add(0, 7, 0, "Settings")
+            if (s != null && s.stops.any { it.status != Status.PENDING }) menu.add(0, 10, 0, "Export delivery report")
             if (s != null) menu.add(0, 8, 0, "Clear route")
             setOnMenuItemClickListener {
                 when (it.itemId) {
@@ -276,6 +277,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
                     7 -> showSettings()
                     8 -> clearRoute()
                     9 -> showPermissions()
+                    10 -> exportReport()
                 }
                 true
             }
@@ -392,10 +394,14 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
     override fun deliverWithProof(stopId: String) {
         val n = SessionStore.session?.stop(stopId)?.optimizedIndex ?: return
         // A fresh file per attempt, so an undone delivery's photo is never re-attached.
-        val photo = File(File(filesDir, "proof").apply { mkdirs() }, "$stopId-${System.currentTimeMillis()}.jpg")
-        Dialogs.proof(this, photo, takePhoto = { takePhoto(it) }) { note, path ->
-            SessionStore.act(this) { mark(stopId, Status.COMPLETED, note = note, photo = path) }
-            snack("Stop $n delivered" + if (path != null) " with photo" else "", "Undo") { undo(stopId) }
+        val stamp = System.currentTimeMillis()
+        val dir = File(filesDir, "proof").apply { mkdirs() }
+        val photo = File(dir, "$stopId-$stamp.jpg")
+        val signature = File(dir, "$stopId-$stamp-sig.png")
+        Dialogs.proof(this, photo, signature, takePhoto = { takePhoto(it) }) { note, path, sigPath ->
+            SessionStore.act(this) { mark(stopId, Status.COMPLETED, note = note, photo = path, signature = sigPath) }
+            val what = listOfNotNull("photo".takeIf { path != null }, "signature".takeIf { sigPath != null })
+            snack("Stop $n delivered" + if (what.isNotEmpty()) " with ${what.joinToString(" and ")}" else "", "Undo") { undo(stopId) }
         }
     }
 
@@ -625,6 +631,29 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
                 .putExtra(MediaStore.EXTRA_OUTPUT, uri)
                 .addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION), REQ_PHOTO)
         }.onFailure { Toast.makeText(this, "No camera app available", Toast.LENGTH_SHORT).show() }
+    }
+
+    /** ⋮ → Export delivery report: a zip (CSV + proof photos + signatures) handed to the share sheet. */
+    private fun exportReport() {
+        val s = SessionStore.session ?: return
+        val stops = s.stops
+        val packages = s.packages
+        val busy = Dialogs.busy(this, "Building report…")
+        Thread {
+            val r = runCatching { ProofExport.build(this, stops, packages) }
+            runOnUiThread {
+                busy.dismiss()
+                r.onSuccess { zip ->
+                    val uri = FileProvider.getUriForFile(this, "$packageName.files", zip)
+                    startActivity(Intent.createChooser(
+                        Intent(Intent.ACTION_SEND).setType("application/zip")
+                            .putExtra(Intent.EXTRA_STREAM, uri)
+                            .putExtra(Intent.EXTRA_SUBJECT, "Delivery report")
+                            .putExtra(Intent.EXTRA_TEXT, DeliveryReport.summary(stops))
+                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share delivery report"))
+                }.onFailure { snack("Couldn't build the report: ${it.message}") }
+            }
+        }.start()
     }
 
     /** ⋮ → Floating button: a real on/off toggle. */

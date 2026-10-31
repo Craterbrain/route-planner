@@ -81,8 +81,9 @@ fun ViewGroup.addWeighted(v: View, weight: Float = 1f, height: Int = ViewGroup.L
     addView(v, LinearLayout.LayoutParams(0, height, weight).apply { setMargins(m, 0, m, 0) })
 }
 
-fun ViewGroup.addFull(v: View, topDp: Int = 0, bottomDp: Int = 0) {
-    addView(v, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+fun ViewGroup.addFull(v: View, topDp: Int = 0, bottomDp: Int = 0, heightDp: Int? = null) {
+    val h = heightDp?.let { context.dp(it) } ?: ViewGroup.LayoutParams.WRAP_CONTENT
+    addView(v, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, h).apply {
         topMargin = context.dp(topDp); bottomMargin = context.dp(bottomDp)
     })
 }

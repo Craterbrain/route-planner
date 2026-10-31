@@ -37,6 +37,8 @@ data class Stop(
     /** Proof of delivery: free-text note and/or a photo file path. */
     val proofNote: String? = null,
     val proofPhoto: String? = null,
+    /** Recipient signature: path of a PNG. */
+    val proofSignature: String? = null,
     /** Position is estimated (interpolated / street-level / approximate geocode): suggest adjusting the pin. */
     val approximate: Boolean = false,
 ) {

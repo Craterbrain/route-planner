@@ -85,7 +85,7 @@ class RouteSession(
         cursor = id?.let { indexOf(it) } ?: firstPending() ?: 0
     }
 
-    private fun set(i: Int, status: Status, reason: FailReason? = null, note: String? = null, photo: String? = null) {
+    private fun set(i: Int, status: Status, reason: FailReason? = null, note: String? = null, photo: String? = null, signature: String? = null) {
         val s = stops[i]
         stops = stops.toMutableList().also {
             it[i] = s.copy(
@@ -94,6 +94,7 @@ class RouteSession(
                 completedAt = if (status == Status.PENDING) null else now(),
                 proofNote = note?.takeIf { it.isNotBlank() },
                 proofPhoto = photo,
+                proofSignature = signature,
             )
         }
         packages = packages.map { if (it.stopId == s.id) it.copy(status = status) else it }
@@ -110,15 +111,15 @@ class RouteSession(
      * the auto-navigate link (if any) is returned; other stops (e.g. swiped in
      * the list) leave the cursor alone.
      */
-    fun mark(id: String, status: Status, reason: FailReason? = null, note: String? = null, photo: String? = null): String? {
+    fun mark(id: String, status: Status, reason: FailReason? = null, note: String? = null, photo: String? = null, signature: String? = null): String? {
         val i = indexOf(id) ?: return null
-        set(i, status, reason, note, photo)
+        set(i, status, reason, note, photo, signature)
         if (status == Status.PENDING) return null
         return if (i == cursor) advance() else null
     }
 
-    fun deliver(note: String? = null, photo: String? = null): String? =
-        current?.let { mark(it.id, Status.COMPLETED, note = note, photo = photo) }
+    fun deliver(note: String? = null, photo: String? = null, signature: String? = null): String? =
+        current?.let { mark(it.id, Status.COMPLETED, note = note, photo = photo, signature = signature) }
     fun fail(reason: FailReason): String? = current?.let { mark(it.id, Status.FAILED, reason) }
     fun skip(): String? = current?.let { mark(it.id, Status.SKIPPED) }
 
