@@ -43,13 +43,14 @@ Manifest CSV columns: `address,lat,lng,package,zone,priority,window_start,window
 | Idea point | Status |
 |---|---|
 | 1. Door target + street access point; geocoding; driver pin adjust | Geocoding chain platform `Geocoder` → Photon for the search bar, long-press reverse lookup and CSV import. Drop-off pins: **Adjust pin on map** or long-press → saved in `AddressMemory` and applied on future imports/adds. |
-| 2. Map (MapLibre, offline tiles) | MapLibre map with OpenFreeMap tiles (ambient cache only). Offline region download not started. Map can be turned off in Settings. |
+| 2. Map (MapLibre, offline tiles) | MapLibre map with OpenFreeMap tiles. **Offline maps** (Settings → Offline maps, or ⋮): downloads the area around your route (start, stops, end, padded) for both the light and dark style, capped at 3,000 tiles per download (OpenFreeMap's limit) by lowering the deepest zoom for big areas; saved maps listed with size and delete. Map can be turned off in Settings. |
 | 3. VRPTW | single vehicle: First/Auto/Last, windows (incl. one-sided), service time, ETAs, distances. Road times: on-device Valhalla (import tiles in Settings) → optional server → straight-line fallback |
-| 4. Packages, truck zones, indexes, CSV import | done; truck zone editable per package; barcode/OCR scanner not started |
+| 4. Packages, truck zones, indexes, CSV import | done; truck zone editable per package. **Scan label** (⋮): CameraX + ML Kit (bundled, offline) reads addresses and tracking numbers from a shipping label; tap the address, pick the geocoded match, and the stop is added with that tracking number as its package (a second parcel for an address already on the route joins that stop). **Find package** (⋮, when the route has packages): scan a barcode to jump to its stop and see its truck location. |
 | 5. Deep links | Google/Waze launched from the app, the card, list swipe, or auto-navigate |
 | 6. Action bar + overlay | in-app next-stop card + `SYSTEM_ALERT_WINDOW` overlay (◄ ✓ ✗ ►); fail reasons; auto-navigate; route persists across process death |
 | Live injection | add stop any time (search, voice, long-press): appended with fresh ETAs, then **Optimize** from the snackbar or menu |
-| Proof of delivery | **Proof** button / long-press **Delivered**: note + photo (system camera app, stored in app files via `FileProvider`), shown in stop details. Signature not yet |
+| Proof of delivery | **Proof** button / long-press **Delivered**: note, photo (system camera app) and a finger-drawn **recipient signature** (PNG, black on white), stored in app files and shown in stop details. **Export delivery report** (⋮) shares a zip: `report.csv` (stop, address, status, time, failure reason, packages, note, photo, signature) plus `photos/` and `signatures/`. |
+| Route end | Starting point row → "ROUTE ENDS": at the last stop, back at the start (round trip), or **at an address** (search, pick on the map, or long-press → Set as route end). An "E" pin marks it on the map; the drive there counts toward the finish time and distance. |
 
 ## Google suggestions (unofficial)
 
@@ -80,11 +81,13 @@ Without network the route list, stop editing, delivery/proof, the floating butto
 
 ## Not yet verified on a device
 
+**0.7.0** adds signature capture, the delivery-report export, a chosen route end, offline map download, and label/barcode scanning. None has run on hardware. Check: the signature pad (drawing, Clear, Save, the saved PNG in stop details), the export sheet opening with a zip that contains the CSV and files, the end-address flows and the E pin, the offline download dialog (tile estimate, progress, Cancel, resulting size, delete; then the map loading in airplane mode in both light and dark), the camera permission prompt, label reading on a real shipping label (addresses listed, tracking number captured, the add-stop flow), Find package scanning, and the larger APK (ML Kit's bundled OCR and barcode models; dropping the 32-bit ABI would save about a third).
+
 **0.6.0** adds Google suggestions over Play services' Cronet, local suggestions with fill-in arrows, the offline address pack, and approximate-position flags. None of it has run on hardware. Check: suggestions appearing as you type (and which source the caption names), that Settings shows "Chromium network stack N (Google Play services)" rather than plain HTTP, the breaker message when Google fails, importing `addresses.sqlite` (125 MB copy) and offline lookups with Wi-Fi off, and the estimated-position flags.
 
 **0.5.0** adds the required route start and has not been run on hardware either. Check: the fresh location fix (accuracy, timeout fallback to last known, location switched off), the gating card, picking the start on the map, the S pin and start row, round trip totals, and that search results near the start come first.
 
-**0.4.0 status:** the 0.3.0 build ran on the user's phone (GrapheneOS-style, no Play services) and showed: no address suggestions, a blank beige map, the overlay bar over the app, a stuck "Undo" strip and a wrapped "Failed" button. 0.4.0 addresses each (see the commit log); **0.4.0 itself has not been run on hardware**.
+**0.4.0 status:** the 0.3.0 build ran on the user's phone (which, it turned out, does have Play services) and showed: no address suggestions, a blank beige map, the overlay bar over the app, a stuck "Undo" strip and a wrapped "Failed" button. 0.4.0 addresses each (see the commit log); **0.4.0 itself has not been run on hardware**.
 
 Blank map, best-supported cause: the beige was MapLibre's default "foreground load color", drawn over the whole MapView (attribution included) until the first frame renders. It never went away. The stop on screen has a full street address, which suggests it was added by long-press, so the map object probably existed but the style never finished loading. MapLibre feeds Android's `getActiveNetworkInfo().isConnected()` into its file source, and when that says "offline" it **waits silently** for connectivity rather than reporting an error. A per-app network block (GrapheneOS Network permission off, or a firewall/VPN app) produces exactly that. One possible route there: 0.2.0 didn't declare `INTERNET`, and GrapheneOS may not switch the Network toggle on automatically when an update adds it (unverified). The same block would also explain why address search got nothing. The style, sprite, glyphs and tiles all load fine from a desktop (checked with curl). 0.4.0 shows a status chip, falls back to pins on a plain background after 10 s, forces MapLibre online when our own HTTP probe succeeds, and has a Network row that tests reachability.
 
@@ -110,19 +113,19 @@ Check first:
 | `POST_NOTIFICATIONS` | runtime (13+) | The floating button's foreground-service notification. |
 | `SYSTEM_ALERT_WINDOW` | special (Settings screen) | The floating button. |
 | `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_SPECIAL_USE` | install-time | Keeps the floating button alive. |
-| Camera | none | Proof photos go through the system camera app (`ACTION_IMAGE_CAPTURE` + `FileProvider`). |
+| Camera | runtime, only when scanning | **Scan label / Find package** ask for it when the scan screen opens. Proof photos still go through the system camera app (`ACTION_IMAGE_CAPTURE` + `FileProvider`), which needs none. |
 
 
 ## Roadmap
 
-1. Run on a device; fix what breaks (nothing below has run on hardware yet).
-2. Build a tile extract for a home region and verify on-device matrix end to end.
-3. End at a chosen address (core supports it; no UI yet). Centerline snapping for street-level address hits; packs for more states.
-4. Offline map regions (MapLibre `OfflineManager`, within OpenFreeMap's download limits); address/ETA labels on pins.
-5. Barcode + label OCR (ML Kit bundled, CameraX).
-6. Signature capture; export proof of delivery.
-7. Room if history/queries outgrow SharedPreferences.
-8. Server + sync only if a multi-device need appears.
+1. Run on a device; fix what breaks (nothing since 0.3.0 has run on hardware).
+2. Build a tile extract for a home region and verify on-device matrix end to end (done for Tennessee; the phone hasn't loaded it).
+3. Street-centerline snapping for street-level address hits; address packs for more states.
+4. (done) ETA labels on map pins: arrival time beside each pending pin (street too for the current stop), zoom 12+.
+5. Room if history/queries outgrow SharedPreferences.
+6. Server + sync only if a multi-device need appears.
+
+Done since the first roadmap: Circuit-style UI, start/end location, Google/offline/local address suggestions, offline address packs, offline map regions, label and barcode scanning, signature capture, delivery report export.
 
 ## Library choices
 
@@ -135,8 +138,8 @@ Principle: add a dependency only where it replaces a large amount of work; use s
 | Road-network matrix | **Valhalla, on-device** via `io.github.rallista:valhalla-mobile` 0.6.4 (MIT, released 2026-10-06, minSdk 24) | Exposes `sources_to_targets`; we call `matrixRaw` with the same JSON the server API takes, so one tested `ValhallaMatrix` parser serves both. Needs a `valhalla_tiles.tar` for the region (`tools/build-tiles.sh`). ~7 MB native lib per ABI (we ship arm64-v8a + armeabi-v7a). A Valhalla server URL is the fallback; then straight-line estimates. OSRM rejected (no time-dependent speeds). |
 | *(earlier note)* | | An earlier search suggested `valhalla-mobile` was stale (0.1.0, Jan 2025); reading its README/releases showed it is current. |
 | Solver | **Own solver**; `jsprit` (pure Java) if multi-vehicle is ever needed | No Android port of VROOM/OR-Tools found. VROOM can sit behind the Valhalla server later. |
-| Label OCR | **ML Kit text recognition, bundled** + **CameraX** | Bundled = offline, no Play Services (~4 MB/script/ABI). Raise CameraX analysis resolution above 640x480. |
-| Package barcodes | **ML Kit barcode scanning, bundled** | More reliable than OCR for tracking numbers. |
+| Label OCR | **ML Kit text recognition, bundled** (`com.google.mlkit:text-recognition` 16.0.1) + **CameraX** 1.4.2 (`camera-core/camera2/lifecycle/view`) | Bundled = offline, no Play Services. Measured: the OCR pipeline is ~10 MB (arm64) / 6.5 MB (arm32) of native code and barcode ~4.7 / 3.1 MB, so the debug APK went from 42 to 72 MB. CameraX 1.6 needs AGP 8.9.1+, so 1.4.2 is used with AGP 8.8.2. Analysis runs at 1920x1080, not the 640x480 default. |
+| Package barcodes | **ML Kit barcode scanning, bundled** (`com.google.mlkit:barcode-scanning` 17.3.0) | More reliable than OCR for tracking numbers; same camera screen as label OCR. |
 | Voice input | **Platform `RecognizerIntent`** | Zero deps; offline availability varies by device. Vosk rejected (40-50 MB/model, weaker). |
 | Geocoding | Google suggest (unofficial, keyless) → offline pack (own SQLite, no library) → **platform `android.location.Geocoder`** → **Photon** over plain `HttpURLConnection` | The platform geocoder is Google-backed on phones with Play services and absent without them. Photon: OSM data, no key, GeoJSON parsed with core `Json`; public instance by default, self-hostable (Settings). Fair use: debounce, ≥3 chars, User-Agent. |
 | Google connection | **`com.google.android.gms:play-services-cronet` 18.1.1** (Google Maven) | Chromium's network stack from Google Play services, used only for the Google suggestion request. It needs Play services on the phone; without them the request falls back to plain HTTP. Adds about 0.9 MB to the APK (play-services-base, basement, tasks and cronet-api; no native libraries, since Cronet itself lives in Play services). Play services keeps its Chrome version current. The embedded `org.chromium.net:cronet-embedded` (Maven stops at 143, ~6 MB of native code per ABI) is **not** shipped. |

@@ -326,6 +326,7 @@ class RouteMap(
         s.addSource(GeoJsonSource(SRC_LINE, FeatureCollection.fromFeatures(emptyList())))
         s.addSource(GeoJsonSource(SRC_PINS, FeatureCollection.fromFeatures(emptyList())))
         s.addSource(GeoJsonSource(SRC_ACCESS, FeatureCollection.fromFeatures(emptyList())))
+        s.addSource(GeoJsonSource(SRC_LABELS, FeatureCollection.fromFeatures(emptyList())))
         s.addLayer(LineLayer(LAYER_LINE, SRC_LINE).withProperties(
             P.lineColor(primary), P.lineWidth(3f), P.lineOpacity(0.8f), P.lineDasharray(arrayOf(2f, 1.5f)),
         ))
@@ -339,6 +340,31 @@ class RouteMap(
             P.iconAllowOverlap(true), P.iconIgnorePlacement(true),
             P.symbolSortKey(Expression.get("z")),
         ))
+        // ETA / street labels to the right of pending pins. Bitmaps like the pins (no glyphs, so offline-safe);
+        // hidden when zoomed out, where they would only pile up.
+        s.addLayer(SymbolLayer(LAYER_LABELS, SRC_LABELS).withProperties(
+            P.iconImage(Expression.get("icon")),
+            P.iconAnchor(org.maplibre.android.style.layers.Property.ICON_ANCHOR_LEFT),
+            P.iconOffset(arrayOf(15f, 0f)),
+            P.iconAllowOverlap(true), P.iconIgnorePlacement(true),
+        ).also { it.minZoom = 12f })
+    }
+
+    /** Small rounded tag with [text] on the surface color; drawn next to a pin. */
+    private fun labelImage(text: String, emphasised: Boolean): Bitmap {
+        val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            textSize = ctx.dpf(11f); isFakeBoldText = emphasised
+            color = ctx.color(if (emphasised) M.attr.colorOnPrimaryContainer else M.attr.colorOnSurface)
+        }
+        val padX = ctx.dpf(6f); val padY = ctx.dpf(3f)
+        val w = p.measureText(text) + padX * 2
+        val h = p.fontMetrics.let { it.descent - it.ascent } + padY * 2
+        val bmp = Bitmap.createBitmap(w.toInt() + 2, h.toInt() + 2, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = ctx.color(if (emphasised) M.attr.colorPrimaryContainer else M.attr.colorSurface) }
+        c.drawRoundRect(RectF(0f, 0f, bmp.width.toFloat(), bmp.height.toFloat()), ctx.dpf(8f), ctx.dpf(8f), bg)
+        c.drawText(text, padX + 1f, padY + 1f - p.fontMetrics.ascent, p)
+        return bmp
     }
 
     /** Circle with the stop number/mark, in the same theme colors as the list badges. */
@@ -399,6 +425,7 @@ class RouteMap(
         st.getSourceAs<GeoJsonSource>(SRC_PINS)?.setGeoJson(FeatureCollection.fromFeatures(emptyList()))
         st.getSourceAs<GeoJsonSource>(SRC_LINE)?.setGeoJson(FeatureCollection.fromFeatures(emptyList()))
         st.getSourceAs<GeoJsonSource>(SRC_ACCESS)?.setGeoJson(FeatureCollection.fromFeatures(emptyList()))
+        st.getSourceAs<GeoJsonSource>(SRC_LABELS)?.setGeoJson(FeatureCollection.fromFeatures(emptyList()))
     }
 
     private fun draw(r: Render) {
@@ -436,6 +463,17 @@ class RouteMap(
             }
         }
         st.getSourceAs<GeoJsonSource>(SRC_PINS)?.setGeoJson(FeatureCollection.fromFeatures(pins + listOfNotNull(startPin, endPin)))
+
+        // Labels: arrival time for every pending stop; the current stop also gets its street.
+        val labels = if (s == null) emptyList() else stops.filter { it.status == Status.PENDING && it.etaSec > 0 }.map { stop ->
+            val isCur = stop.id == cur?.id
+            val time = ctx.clock(s, stop.etaSec)
+            val text = if (isCur) "$time · ${stop.address.substringBefore(',').take(22)}" else time
+            val key = "rp-label-$text-$isCur"
+            if (images.add(key)) st.addImage(key, labelImage(text, isCur))
+            Feature.fromGeometry(Point.fromLngLat(stop.target.lng, stop.target.lat)).apply { addStringProperty("icon", key) }
+        }
+        st.getSourceAs<GeoJsonSource>(SRC_LABELS)?.setGeoJson(FeatureCollection.fromFeatures(labels))
 
         // Before any stop is done the line begins at the start (the depot).
         val underway = stops.any { it.status != Status.PENDING }
@@ -513,6 +551,8 @@ class RouteMap(
         private const val SRC_PINS = "rp-stops"
         private const val SRC_LINE = "rp-line"
         private const val SRC_ACCESS = "rp-access"
+        private const val SRC_LABELS = "rp-labels"
+        private const val LAYER_LABELS = "rp-labels-layer"
         private const val LAYER_PINS = "rp-stops-layer"
         private const val LAYER_LINE = "rp-line-layer"
         private const val LAYER_ACCESS = "rp-access-layer"
