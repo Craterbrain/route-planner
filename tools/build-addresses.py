@@ -3,6 +3,8 @@
 
     tools/build-addresses.py --state TN --out data/tn/addresses.sqlite
     tools/build-addresses.py --state KY --bbox -89.6,36.4,-81.9,39.2 --out data/ky/addresses.sqlite
+    tools/build-addresses.py --state TN --county "Cumberland County" \
+        --region-name "Cumberland County, TN" --out data/cumberland/addresses.sqlite
     tools/build-addresses.py --selftest
 
 Requires Python 3 + duckdb (pip install duckdb) for the build; --selftest needs
@@ -132,6 +134,106 @@ def fetch(con, state, release, bbox, cache):
     log("fetch: done")
 
 
+# ---------------------------------------------------------------- region
+
+DIVISIONS_PATH = ("s3://overturemaps-us-west-2/release/{release}/"
+                  "theme=divisions/type=division_area/*")
+STATE_NAMES = {"TN": "Tennessee"}
+
+
+def county_polygon(con, state, county, release, bbox, cache_dir):
+    """WKT of the county's land polygon from Overture divisions (cached)."""
+    slug = "".join(c if c.isalnum() else "-" for c in county.lower()).strip("-")
+    path = os.path.join(cache_dir, f"overture-county-{state}-{slug}-{release}.wkt")
+    if os.path.exists(path):
+        log(f"region: reusing cached boundary {path}")
+        with open(path, encoding="utf-8") as f:
+            div_id, wkt = f.read().split("\n", 1)
+        return div_id, wkt
+    xmin, ymin, xmax, ymax = bbox
+    log(f"region: fetching '{county}' boundary (Overture divisions, region US-{state})")
+    rows = con.execute(f"""
+        SELECT division_id, names.primary, ST_AsText(geometry)
+        FROM read_parquet('{DIVISIONS_PATH.format(release=release)}')
+        WHERE bbox.xmin >= {xmin} AND bbox.xmax <= {xmax}
+          AND bbox.ymin >= {ymin} AND bbox.ymax <= {ymax}
+          AND subtype = 'county' AND class = 'land' AND country = 'US'
+          AND region = 'US-{state}' AND lower(names.primary) = lower(?)""",
+                       [county]).fetchall()
+    if len(rows) != 1:
+        raise SystemExit(f"expected exactly one county named {county!r} in US-{state}, "
+                         f"found {len(rows)}: {[r[:2] for r in rows]}")
+    div_id, _, wkt = rows[0]
+    with open(path + ".part", "w", encoding="utf-8") as f:
+        f.write(div_id + "\n" + wkt)
+    os.replace(path + ".part", path)
+    return div_id, wkt
+
+
+MIN_ZIP_ADDRESSES = 25  # smaller "ZIPs" in NAD are typos/strays ('3855', '39558')
+
+
+def select_region(con, cache, state, release, bbox, county, zips, threshold, name, cache_dir):
+    """Pick the rows of a regional pack.
+
+    With --county, the pack holds
+      * every address inside the county polygon (whatever its ZIP), plus
+      * ALL addresses of each ZIP with >= threshold of its statewide addresses
+        inside the county, so a ZIP straddling the county line stays whole.
+    A "ZIP" must be 5 digits with >= MIN_ZIP_ADDRESSES statewide addresses to
+    be included whole; smaller ones are data-entry strays (their in-county
+    addresses are still covered by the polygon)."""
+    src = f"read_parquet('{cache}')"
+    region = {"name": name, "threshold": "", "zips": []}
+    if zips:
+        region["type"] = "zips"
+        region["zips"] = sorted(set(zips))
+        region.pop("threshold")
+    if county:
+        div_id, wkt = county_polygon(con, state, county, release, bbox, cache_dir)
+        region.update({"type": "county", "county": county,
+                       "boundary": f"Overture divisions {release}, division_id {div_id}",
+                       "threshold": str(threshold)})
+        rows = con.execute(f"""
+            WITH c AS (SELECT ST_GeomFromText(?) AS g),
+            s AS (SELECT coalesce(postcode, '') AS zip,
+                         ST_Contains(c.g, ST_Point(x, y)) AS inside
+                  FROM {src}, c)
+            SELECT zip, count(*) AS total, count(*) FILTER (WHERE inside) AS n_in
+            FROM s GROUP BY zip HAVING n_in > 0 ORDER BY n_in DESC""", [wkt]).fetchall()
+        total_in = sum(r[2] for r in rows)
+        log(f"region: {total_in:,} addresses inside {county}, {state}")
+        print(f"   {'ZIP':<6} {'in county':>10} {'ZIP total':>10} {'share':>7}  decision")
+        chosen, near_miss = [], []
+        for z, tot, n_in in rows:
+            share = n_in / tot
+            real = len(z) == 5 and z.isdigit() and tot >= MIN_ZIP_ADDRESSES
+            keep = real and share >= threshold
+            if keep:
+                chosen.append(z)
+                why = "include whole ZIP"
+            elif not real:
+                why = "stray/invalid ZIP: in-county rows only"
+            else:
+                why = "in-county rows only"
+                near_miss.append((z, share))
+            print(f"   {z or '(none)':<6} {n_in:>10,} {tot:>10,} {share:>6.1%}  {why}")
+        region["zips"] = sorted(set(region["zips"]) | set(chosen))
+        kept_in = sum(r[2] for r in rows if r[0] in region["zips"])
+        log(f"region: ZIPs included whole: {', '.join(region['zips'])}")
+        if near_miss:
+            log("region: ZIPs below --zip-threshold (only their in-county addresses are kept): "
+                + ", ".join(f"{z} {sh:.1%}" for z, sh in near_miss))
+        log(f"region: in-county addresses inside the whole ZIPs: {kept_in:,}/{total_in:,} "
+            f"({kept_in / max(total_in, 1):.1%}); the rest are added by the polygon")
+        region["inside_county"] = str(total_in)
+        region["partial_zips"] = [z for z, _ in near_miss]
+        region["_wkt"] = wkt
+    if not region["zips"]:
+        raise SystemExit("region selection produced no ZIPs")
+    return region
+
+
 # ---------------------------------------------------------------- stage 2
 
 SCHEMA = """
@@ -158,12 +260,27 @@ CREATE TABLE addr(
 """
 
 
-def build(con, cache, out, state, release, bbox):
+def build(con, cache, out, state, release, bbox, region=None):
+    """region: None for a whole-state pack, else a dict from select_region()
+    whose 'zips' limits the rows and whose other keys go into meta."""
     part = out + ".part"
     if os.path.exists(part):
         os.remove(part)
     t_build = time.time()
-    src = f"read_parquet('{cache}')"
+    where = ""
+    if region:
+        # whole chosen ZIPs, plus (with --county) every address inside the
+        # county polygon whatever its ZIP says
+        where = "WHERE postcode IN (" + ",".join(f"'{z}'" for z in region["zips"]) + ")"
+        if region.get("_wkt"):
+            con.execute("CREATE OR REPLACE TEMP TABLE county_poly AS "
+                        "SELECT ST_GeomFromText(?) AS g", [region["_wkt"]])
+            where += (" OR ST_Contains((SELECT g FROM county_poly), ST_Point(x, y))")
+    con.execute(f"CREATE OR REPLACE TEMP TABLE src AS SELECT * FROM read_parquet('{cache}') {where}")
+    src = "src"
+    if region:  # bbox of what is actually in the pack
+        b = con.execute("SELECT min(x), min(y), max(x), max(y) FROM src").fetchone()
+        bbox = tuple(round(v, 5) for v in b)
     total = con.execute(f"SELECT count(*) FROM {src}").fetchone()[0]
     log(f"build: {total:,} source rows")
 
@@ -286,11 +403,16 @@ def build(con, cache, out, state, release, bbox):
         "streets": str(nstreets),
         "addresses": str(naddr),
         "bbox": ",".join(str(v) for v in bbox),
+        "region_name": region["name"] if region else STATE_NAMES.get(state, state),
         "coord_unit": "microdegrees (value * 1e6, WGS84)",
         "normalizer": "docs/address-pack.md#normalization v1",
         "attribution": ATTRIBUTION.format(release=release),
         "license": LICENSE_NOTE.format(licenses=", ".join(lic)),
     }
+    if region:
+        for k, v in region.items():
+            if k != "name" and not k.startswith("_"):
+                meta["region_" + k] = ",".join(v) if isinstance(v, list) else str(v)
     db.executemany("INSERT INTO meta VALUES (?, ?)", sorted(meta.items()))
     db.commit()
     log("build: ANALYZE")
@@ -316,6 +438,16 @@ def main():
     ap.add_argument("--refetch", action="store_true", help="ignore the cached Overture extract")
     ap.add_argument("--threads", type=int, default=os.cpu_count() or 4)
     ap.add_argument("--selftest", action="store_true", help="check normalization vectors and exit")
+    g = ap.add_argument_group("regional pack (subset of one state)")
+    g.add_argument("--county", help="county name as in Overture divisions, e.g. 'Cumberland County'")
+    g.add_argument("--zips", help="comma-separated ZIP codes to include (alone or added to --county)")
+    g.add_argument("--zip-threshold", type=float, default=0.25,
+                   help="with --county: include a ZIP when at least this share of its statewide "
+                        "addresses is inside the county (default 0.25)")
+    g.add_argument("--region-name", help="stored in meta.region_name, e.g. 'Cumberland County, TN'")
+    g.add_argument("--cache", help="statewide Overture Parquet cache (default: data/<state>/ "
+                                   "next to the output for state packs, the sibling "
+                                   "<data>/<state>/ directory for regional packs)")
     a = ap.parse_args()
     if a.selftest:
         return selftest()
@@ -337,7 +469,12 @@ def main():
     import duckdb  # only needed for the build
     out = os.path.abspath(a.out)
     os.makedirs(os.path.dirname(out), exist_ok=True)
-    cache = os.path.join(os.path.dirname(out), f"overture-{state}-{a.release}.parquet")
+    regional = bool(a.county or a.zips)
+    cache_dir = os.path.dirname(out)
+    if regional:  # share the statewide cache, e.g. data/tn/ for data/cumberland/x.sqlite
+        cache_dir = os.path.join(os.path.dirname(cache_dir), state.lower())
+        os.makedirs(cache_dir, exist_ok=True)
+    cache = a.cache or os.path.join(cache_dir, f"overture-{state}-{a.release}.parquet")
     if a.refetch and os.path.exists(cache):
         os.remove(cache)
     con = duckdb.connect()
@@ -345,7 +482,13 @@ def main():
     con.execute("INSTALL httpfs; LOAD httpfs; INSTALL spatial; LOAD spatial; "
                 "SET s3_region='us-west-2';")
     fetch(con, state, a.release, bbox, cache)
-    build(con, cache, out, state, a.release, bbox)
+    region = None
+    if regional:
+        zips = [z.strip() for z in a.zips.split(",") if z.strip()] if a.zips else []
+        name = a.region_name or (f"{a.county}, {state}" if a.county else f"ZIPs {','.join(zips)}")
+        region = select_region(con, cache, state, a.release, bbox, a.county, zips,
+                               a.zip_threshold, name, os.path.dirname(cache))
+    build(con, cache, out, state, a.release, bbox, region)
     return 0
 
 

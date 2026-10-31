@@ -205,7 +205,9 @@ Other helpers, defined in the same file and used by build and query:
 1. **Parse** (`parse_query`).
    - Text after the first comma is locality only.
    - A leading word that starts with a digit is the house number.
-   - `apt|unit|ste|suite|#|lot … X` sets the unit.
+   - `apt|unit|ste|suite|#|lot … X` sets the unit. The last such word
+     wins, scanning from the end, because street names can contain one
+     ("Highland Courtyard Apartment Loop apt 206").
    - A trailing 5-digit ZIP becomes a postcode filter, and trailing
      `tn`/`tennessee`/`usa` is dropped.
    - The house number goes through `split_house_number`, the same function
@@ -220,7 +222,16 @@ Other helpers, defined in the same file and used by build and query:
      plain prefix range on a BINARY index. It also matches a half-typed last
      word: "old hickory bl" finds `old hickory blvd`.
    - Keep only rows whose tokens start with the query tokens: whole words,
-     except the last, which may be a prefix.
+     except the last, which may be a prefix. A leading directional in the row
+     is skipped when the query does not start with it (see the next point).
+   - **Leading-directional variants.** Rule 10 leaves a leading directional
+     in front when everything after it is a street-type word: "East Cove
+     Road" becomes `e cv rd`, "North Court St" becomes `n ct st`. That is 88
+     Tennessee norms. If every query token is a street type or a directional,
+     also scan `"<d> " + q` for each directional d, so "Cove Rd" and
+     "Cove Rd East" find `e cv rd`. The scan is skipped for every other
+     query, so it costs nothing in the usual case. This is a query-side fix,
+     so the norm contract and the vectors are unchanged.
    - The dropped words `words[k:]`, plus the text after the comma, must all
      appear among the tokens of `city`, `pcity` or `postcode`. The last of
      them may be a prefix ("crossv").
@@ -339,6 +350,129 @@ median error 14–21 m, p75 50–70 m, p90 100–170 m, max ~670 m. The
 nearest-house fallback (numbers on only one side) is much worse: median
 50–105 m, p90 290–460 m, max ~1.2 km.
 
+## Regional packs (county / ZIP subset)
+
+A regional pack has the same file format, schema, `user_version = 1` and
+`meta.format = '1'` as a state pack, so the app imports it the same way. It
+holds only the addresses a driver in one area needs.
+
+```
+tools/build-addresses.py --state TN --county "Cumberland County" \
+    --region-name "Cumberland County, TN" --out data/cumberland/addresses.sqlite
+# options: --zip-threshold 0.25 (default)   --zips 38555,38572 (extra/explicit ZIPs)
+```
+
+**What goes in:**
+
+1. **County boundary.** The county polygon comes from Overture divisions
+   (`theme=divisions/type=division_area`, `subtype='county'`,
+   `class='land'`, `region='US-<ST>'`, `names.primary` = the county). There
+   must be exactly one match, otherwise the build stops. The polygon is
+   cached as `data/<st>/overture-county-<ST>-<slug>-<release>.wkt` (first
+   line is the division id, the rest is WKT). For Cumberland County, TN that
+   is division `9033d94d-6c71-4d41-ab17-62da9859d3f9`, bbox
+   −85.272…−84.681, 35.747…36.171. The `US-TN` region filter rules out the
+   KY, PA, NJ, VA and other Cumberland Counties.
+2. **ZIP share.** Every statewide address is tested with
+   `ST_Contains(county, point)`. For each ZIP the build prints its in-county
+   count, statewide total and share.
+3. **Rows kept:**
+   - ALL addresses of every ZIP with share ≥ `--zip-threshold`, so a ZIP
+     that straddles the county line stays whole and searchable; plus
+   - every address inside the polygon, whatever its ZIP says. This covers
+     the in-county corners of ZIPs below the threshold, rows with no ZIP, and
+     typo ZIPs.
+   - A "ZIP" counts as a ZIP only if it has 5 digits and at least 25
+     statewide addresses. NAD has strays such as `3855`, `8574` and `39558`
+     (a Mississippi ZIP) on a handful of in-county rows. Those rows are kept
+     through the polygon, but they never pull in a whole ZIP.
+4. **Statewide cache.** The build reuses the statewide Parquet cache in the
+   sibling `data/<st>/` directory (or `--cache`). If that cache is missing,
+   it runs the normal statewide fetch first.
+5. **Meta.** `meta.state` stays `TN`. The extra keys are `region_name`
+   ('Cumberland County, TN'), `region_type` (`county`), `region_county`,
+   `region_boundary` (source and division id), `region_threshold`,
+   `region_zips` (the ZIPs included whole), `region_partial_zips` (ZIPs only
+   partly in the pack) and `region_inside_county`. `bbox` is the bbox of the
+   points actually in the pack. State packs now also write `region_name`
+   (for example 'Tennessee').
+
+**Cumberland County, TN (measured 2026-10-31):**
+
+| ZIP | in county | ZIP total (TN) | share | in pack |
+|---|---|---|---|---|
+| 38555 Crossville | 14,586 | 14,734 | 99.0% | whole ZIP |
+| 38571 Crossville | 9,971 | 9,971 | 100% | whole ZIP |
+| 38572 Crossville | 9,024 | 9,225 | 97.8% | whole ZIP |
+| 38558 Crossville / Fairfield Glade | 7,514 | 7,515 | 100% | whole ZIP |
+| 37723 Crab Orchard | 958 | 958 | 100% | whole ZIP |
+| 37337 Grandview | 377 | 1,046 | 36.0% | whole ZIP |
+| 37854 Rockwood | 1,522 | 7,902 | 19.3% | in-county part only |
+| 38574 Monterey | 1,025 | 6,277 | 16.3% | in-county part only |
+| 38583 Sparta | 911 | 14,423 | 6.3% | in-county part only |
+| 37367 Pikeville | 62 | 7,036 | 0.9% | in-county part only |
+| 37737, 38573, 38553, 38582 | 4, 2, 1, 1 | | ≤0.1% | in-county part only |
+| no ZIP / stray ZIPs | 30 + 29 | | | in-county rows only |
+
+- **Pleasant Hill:** 38578 does not appear in NAD. Pleasant Hill addresses
+  are filed under 38571, 38572 and 38583.
+- **Size:** 46,015 addresses lie inside the county. The pack has 47,034
+  source rows, 46,715 address rows and 3,389 street groups.
+- **File:** **1.6 MB** (`addr` 1.18 MB, `streets` 0.26 MB, indexes
+  0.12 MB). gzip shrinks it to 0.73 MB if it is ever shipped compressed.
+- **Build time:** 0.6 s from the caches. The first run adds about 16 s to
+  fetch the county polygon.
+- **Lowering the threshold:** `--zip-threshold 0.15` would add Rockwood and
+  Monterey whole, for about +11.6k rows.
+
+**Size tuning, checked:**
+
+- page_size makes almost no difference. 512 B gives 1.63 MB, 1 KB 1.59,
+  2 KB 1.57, 4 KB 1.59, 8 KB 1.61 and 64 KB 2.03, so the default 4096 stays.
+- Integer columns are already variable-length in SQLite, so microdegree ints
+  take 4 bytes each and small ids take 1–2 bytes.
+- The remaining space is the WITHOUT ROWID `addr` B-tree, which is the data
+  itself. Shrinking further would need schema changes such as delta-coded
+  coordinates, which the Kotlin reader would not understand, so they were not
+  made.
+
+**Android compatibility:** the header has file-format read/write version 1
+(rollback journal, not WAL) and schema format 4, and the text encoding is
+UTF-8. The newest feature used is WITHOUT ROWID (SQLite 3.8.2). Android 8.0
+ships SQLite 3.18, so it can open the file. `sqlite_stat4` is an ordinary
+table to builds without STAT4.
+
+**Match rates** (`tools/eval-address-pack.py … --polygon data/tn/overture-county-TN-cumberland-county-2026-10-21.0.wkt`):
+300 addresses sampled inside the county, seeds 1–3, same perturbations as
+for the state pack.
+
+| mode | top-1 within 10 m | right street + number (exact, ≤ 500 m) |
+|---|---|---|
+| + city | 95.7–98.7% | 100% |
+| + ZIP | 95.7–98.3% | 100% |
+| + `--near` | 95.7–98.3% | 99.7–100% |
+| bare | 95.7–98.3% | 100% |
+
+- **Remaining misses:** multi-unit addresses where the unit was not typed
+  (all but one within 50 m), Fairfield Glade condos where the same number
+  appears at several points, and one ZIP-typo duplicate group (`39558`
+  instead of `38558`).
+- **Latency:** median 0.1 ms, max under 1 ms.
+- **Interpolation (leave-one-out):** median error 21–26 m, p90 74–93 m.
+- **Verified:** '8681 US-70', '8681 hwy 70 east', '8681 highway 70 crab
+  orchard', '8681 US Highway 70 E Crossville' and '8681 Highway 70 East,
+  Crossville TN 38555' all return the exact point 35.909184, −84.898383.
+
+**Caveats:**
+
+- Addresses just outside the county are present only when their ZIP is
+  included whole. A delivery in Rockwood or Monterey proper, outside the
+  county, is not in the pack.
+- ZIPs are taken from NAD as they are. A few rows have typo ZIPs, and a
+  ZIP's real USPS extent can differ from where its NAD points fall.
+- Shares are computed against **Tennessee** addresses only. A ZIP crossing a
+  state line is judged by its TN part.
+
 ## Building for another state
 
 ```
@@ -372,8 +506,9 @@ tools/build-addresses.py --state KY --bbox -89.6,36.4,-81.9,39.2 --out data/ky/a
 - **Import:** Settings → import address pack, the same flow as the Valhalla
   tiles. Copy the file to `filesDir/addresses.sqlite`.
 - **Validation on import:** check `PRAGMA user_version == 1` and
-  `meta.format == '1'`, then show `meta.state`, `meta.release`,
-  `meta.addresses` and `meta.attribution`.
+  `meta.format == '1'`, then show `meta.region_name`, falling back to
+  `meta.state` for packs built before region support. Also show
+  `meta.release`, `meta.addresses` and `meta.attribution`.
 - **Opening:** use `SQLiteDatabase.openDatabase(path, null, OPEN_READONLY)`.
   Do not enable WAL or write anything.
 - **Search order:** try the offline pack first whenever its state covers the
@@ -388,8 +523,8 @@ tools/build-addresses.py --state KY --bbox -89.6,36.4,-81.9,39.2 --out data/ky/a
     for line from `query-address.py`.
   - All coordinates divide by 1e6.
   - `ORDER BY`/`LIMIT` scans need nothing beyond what is listed above.
-    Android's SQLite (3.22+ on API 28+) supports everything used here: WITHOUT
-    ROWID, range scans, `%`. No FTS5 or JSON1 is needed.
+    The newest SQLite feature used is WITHOUT ROWID (3.8.2), so even Android
+    8.0's SQLite 3.18 opens the packs. No FTS5 or JSON1 is needed.
 - **Display:** show the match type so the driver knows how far to trust the
   pin. Exact is a house point. Interpolated is roughly ±50 m. Nearest-house
   and street can be hundreds of metres off, so suggest "adjust pin". The

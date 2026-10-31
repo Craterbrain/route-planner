@@ -119,12 +119,23 @@ def main():
     ap.add_argument("--n", type=int, default=300)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--show-failures", type=int, default=25)
+    ap.add_argument("--polygon", help="WKT file (e.g. the cached county boundary): sample only "
+                                      "addresses inside it (for regional packs)")
     a = ap.parse_args()
     import duckdb
     duck = duckdb.connect()
+    where, args = "", []
+    if a.polygon:
+        duck.execute("INSTALL spatial; LOAD spatial;")
+        with open(a.polygon, encoding="utf-8") as f:
+            wkt = f.read().split("\n", 1)[-1]  # build cache: "<division_id>\n<WKT>"
+        where, args = "WHERE ST_Contains(ST_GeomFromText(?), ST_Point(x, y))", [wkt]
     rows = duck.execute(f"""
-        SELECT number, street, coalesce(unit,''), levels[2], postal_city, postcode, y, x
-        FROM read_parquet('{a.parquet}') USING SAMPLE {a.n} ROWS (reservoir, {a.seed})""").fetchall()
+        SELECT * FROM (
+          SELECT number, street, coalesce(unit,'') AS unit, levels[2] AS city, postal_city,
+                 postcode, y, x
+          FROM read_parquet('{a.parquet}') {where})
+        USING SAMPLE {a.n} ROWS (reservoir, {a.seed})""", args).fetchall()
     rnd = random.Random(a.seed)
     db = sqlite3.connect(f"file:{a.pack}?mode=ro", uri=True)
     modes = ["city", "zip", "near", "bare"]

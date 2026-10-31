@@ -21,7 +21,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from addrnorm import (normalize_street, normalize_place, split_house_number,  # noqa: E402
-                      DIRECTIONALS)
+                      DIRECTIONALS, STREET_TYPES)
 
 __all__ = ["search", "lookup_number", "split_house_number", "haversine_m"]
 
@@ -69,10 +69,12 @@ def parse_query(text):
         words = words[1:]
 
     # unit: "apt 4", "# 4", "unit B" anywhere after the street name
+    # (scan from the END: "Highland Courtyard Apartment Loop apt 206" has a
+    #  unit word inside the street name)
     unit_raw = ""
-    for i, w in enumerate(words):
-        if w.lower().strip(".") in UNIT_WORDS and i > 0:
-            unit_raw = " ".join(words[i + 1:i + 2])
+    for i in range(len(words) - 2, 0, -1):
+        if words[i].lower().strip(".") in UNIT_WORDS:
+            unit_raw = words[i + 1]
             words = words[:i] + words[i + 2:]
             break
     # same split as the build: "112B" -> number '112', unit 'b'
@@ -111,7 +113,12 @@ def street_candidates(db, q, postcode):
 def word_match(q_tokens, norm_tokens):
     """2 = every query token is a whole token of norm, in order from the start;
     1 = same but the last query token is only a prefix (half-typed word);
-    0 = no match (e.g. 'hwy 70' vs 'hwy 701' still gives 1, ranked lower)."""
+    0 = no match (e.g. 'hwy 70' vs 'hwy 701' still gives 1, ranked lower).
+    A leading directional left in norm (rule 10 keeps it when the rest is all
+    street-type words: 'East Cove Road' -> 'e cv rd') is skipped if the query
+    does not start with it."""
+    if norm_tokens and norm_tokens[0] in DIRS and q_tokens and q_tokens[0] != norm_tokens[0]:
+        norm_tokens = norm_tokens[1:]
     if len(q_tokens) > len(norm_tokens):
         return 0
     for i, t in enumerate(q_tokens):
@@ -158,6 +165,14 @@ def find_streets(db, words, loc_words, postcode):
             want_dir = qt[-1]
             qt = qt[:-1]
         rows = street_candidates(db, " ".join(qt), postcode)
+        # Also look behind a leading directional (88 TN norms such as
+        # 'e cv rd', 'n ct st' keep it in front), so "Cove Rd" and
+        # "Cove Rd East" find 'e cv rd'. Such norms only ever contain
+        # street-type and directional words, so only then is it worth the
+        # extra range scan per directional.
+        if qt[0] not in DIRS and all(t in STREET_TYPES or t in DIRS for t in qt):
+            for d in sorted(DIRS):
+                rows += street_candidates(db, d + " " + " ".join(qt), postcode)
         rows = [r for r in rows if word_match(qt, r[2].split())]
         if not rows:
             continue
