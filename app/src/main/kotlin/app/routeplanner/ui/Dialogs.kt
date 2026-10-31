@@ -160,9 +160,15 @@ object Dialogs {
         var serverUrl: String,
         var geocoderUrl: String,
         val roadsInfo: String,
+        var googleSuggest: Boolean,
+        val googleTransport: String,
+        val addressInfo: String,
+        val addressAttribution: String?,
+        val recentCount: Int,
     )
 
-    fun settings(ctx: Context, m: SettingsModel, openPermissions: () -> Unit, importRoads: () -> Unit, onSave: (SettingsModel) -> Unit) {
+    fun settings(ctx: Context, m: SettingsModel, openPermissions: () -> Unit, importAddresses: () -> Unit, manageRecents: () -> Unit,
+                 importRoads: () -> Unit, onSave: (SettingsModel) -> Unit) {
         val box = ctx.vertical(padH = 24, padV = 8)
         box.addFull(ctx.button("Permissions & network…", M.attr.materialButtonOutlinedStyle) { openPermissions() }, bottomDp = 8)
         box.addFull(ctx.label(12f, M.attr.colorPrimary, bold = true).apply { text = "NAVIGATION" })
@@ -190,15 +196,35 @@ object Dialogs {
         box.addFull(url)
 
         box.addFull(ctx.label(12f, M.attr.colorPrimary, bold = true).apply { text = "ADDRESS SEARCH" }, topDp = 16)
+        val google = MaterialSwitch(ctx).apply { text = "Google suggestions (unofficial)"; isChecked = m.googleSuggest }
+        box.addFull(google)
         box.addFull(ctx.label(13f, M.attr.colorOnSurfaceVariant).apply {
-            text = "Uses the phone's geocoder if it has one, otherwise Photon (OpenStreetMap). What you type is sent to that server. Leave blank for the public photon.komoot.io, or enter your own Photon URL."
+            text = "Suggestions while you type come from Google Maps' web search box, without an account or API key. " +
+                "This sends what you type, your approximate location (the route start) and your IP address to Google. " +
+                "It is not an official API, it is against Google's terms, and it may stop working. " +
+                "Off: only the offline address data, the phone's geocoder and OpenStreetMap (Photon) are used. " +
+                "Connection: ${m.googleTransport}."
         })
+        box.addFull(ctx.button("Recent searches (${m.recentCount})…", M.attr.materialButtonOutlinedStyle) { manageRecents() }, topDp = 4)
+        box.addFull(ctx.label(13f, M.attr.colorOnSurfaceVariant).apply {
+            text = "Full addresses (spreadsheets, a typed address) are resolved with the offline address data first, then the phone's geocoder (Google-backed on phones with Play services), then Google, then Photon. " +
+                "Photon server (blank = public photon.komoot.io; what you type is sent there when it is used):"
+        }, topDp = 8)
         val geo = EditText(ctx).apply {
             hint = "https://photon.komoot.io"
             setText(m.geocoderUrl)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
         }
         box.addFull(geo)
+
+        box.addFull(ctx.label(12f, M.attr.colorPrimary, bold = true).apply { text = "ADDRESS DATA (OFFLINE)" }, topDp = 16)
+        box.addFull(ctx.label(14f).apply { text = m.addressInfo })
+        box.addFull(ctx.button("Import address data (.sqlite)", M.attr.materialButtonOutlinedStyle) { importAddresses() }, topDp = 4)
+        m.addressAttribution?.let { a ->
+            box.addFull(ctx.label(12f, M.attr.colorOnSurfaceVariant).apply {
+                text = a + "\nLicense: per-record public domain (LicenseRef-Public-Domain-US); the NAD Access and Usage License text has not been verified."
+            }, topDp = 4)
+        }
         MaterialAlertDialogBuilder(ctx).setTitle("Settings").setView(ScrollView(ctx).apply { addView(box) })
             .setPositiveButton("Save") { _, _ ->
                 m.waze = nav.value() == "Waze"
@@ -206,6 +232,7 @@ object Dialogs {
                 m.showMap = map.isChecked
                 m.serverUrl = url.text.toString()
                 m.geocoderUrl = geo.text.toString()
+                m.googleSuggest = google.isChecked
                 onSave(m)
             }
             .setNegativeButton("Close", null).show()

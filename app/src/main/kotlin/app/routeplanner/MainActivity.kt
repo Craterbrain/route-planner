@@ -81,6 +81,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         private const val REQ_VOICE = 4
         private const val REQ_PHOTO = 5
         private const val REQ_START_LOCATION = 8
+        private const val REQ_ADDRESSES = 9
     }
 
     override fun onCreate(b: Bundle?) {
@@ -123,8 +124,10 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         // Search suggestions float above the sheet, under the search bar.
         searchPanel = SearchPanel(this, search, { actions.addressSearch() }) { s, typed ->
             hideKeyboard()
-            if (searchingStart || currentStart() == null) setStart(RouteStart(s.point, s.label))
-            else actions.addStopAt(s.label, s.point, typed)
+            val p = s.point ?: return@SearchPanel
+            prefs.addRecent(s)
+            if (searchingStart || currentStart() == null) setStart(RouteStart(p, s.label))
+            else actions.addStopAt(s.label, p, typed, s.approximate)
         }
         root.addView(searchPanel.card, CoordinatorLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.TOP })
         snackAnchor = android.view.View(this)
@@ -158,6 +161,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         }
         setContentView(root)
         handleIntent(intent)
+        root.post { GoogleTransport.warmUp(this) } // async; plain HTTP until Play services' Cronet is ready
         if (!prefs.setupShown) {
             prefs.setupShown = true
             root.post { showPermissions() }
@@ -656,19 +660,44 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
             showMap = prefs.showMap,
             serverUrl = prefs.valhallaUrl,
             geocoderUrl = prefs.geocoderUrl,
+            googleSuggest = prefs.googleSuggest,
+            googleTransport = GoogleTransport.description,
+            addressInfo = AddressPack.summary(this) ?: "No address data. Import a Tennessee addresses.sqlite to look up house addresses offline.",
+            addressAttribution = AddressPack.meta(this)["attribution"],
+            recentCount = prefs.recents.size,
             roadsInfo = if (tiles.exists()) "Offline road data installed (${tiles.length() / 1_000_000} MB)."
             else "No offline road data: times come from the server below, or straight-line estimates.",
         )
-        Dialogs.settings(this, model, openPermissions = { showPermissions() }, importRoads = {
+        Dialogs.settings(this, model, openPermissions = { showPermissions() },
+            importAddresses = {
+                startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), REQ_ADDRESSES)
+            },
+            manageRecents = { manageRecents() },
+            importRoads = {
             startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), REQ_TILES)
         }) { m ->
             prefs.navApp = if (m.waze) NavApp.WAZE else NavApp.GOOGLE
             prefs.autoNavigate = m.autoNavigate
             prefs.valhallaUrl = m.serverUrl
             prefs.geocoderUrl = m.geocoderUrl
+            prefs.googleSuggest = m.googleSuggest
             SessionStore.session?.let { s -> s.navApp = prefs.navApp; s.autoNavigate = m.autoNavigate; SessionStore.commit(this) }
             if (m.showMap != prefs.showMap) { prefs.showMap = m.showMap; recreate() }
         }
+    }
+
+    /** Settings → recent searches: remove one, or clear all. */
+    private fun manageRecents() {
+        val items = prefs.recents
+        if (items.isEmpty()) { snack("No recent searches"); return }
+        MaterialAlertDialogBuilder(this).setTitle("Recent searches")
+            .setItems(items.map { it.label }.toTypedArray()) { _, i ->
+                Dialogs.confirm(this, "Remove from recents?", items[i].label, "Remove") {
+                    prefs.recents = prefs.recents.filter { SuggestRanker.key(it) != SuggestRanker.key(items[i]) }
+                }
+            }
+            .setNeutralButton("Clear all") { _, _ -> prefs.recents = emptyList(); snack("Recent searches cleared") }
+            .setNegativeButton("Close", null).show()
     }
 
     @Deprecated("fine for a single-activity app")
@@ -678,6 +707,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         when (req) {
             REQ_IMPORT -> data?.data?.let { actions.importCsv(it) }
             REQ_TILES -> data?.data?.let { actions.importTiles(it) }
+            REQ_ADDRESSES -> data?.data?.let { actions.importAddressPack(it) { } }
             REQ_VOICE -> data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let {
                 search.setText(it)
                 searchPanel.submit()

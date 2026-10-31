@@ -283,6 +283,7 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
             val pkgs = s.finder(st)
             val cond = conditions(s, st, sum)
             val meta = listOfNotNull(
+                if (st.approximate && st.access == st.target) "Estimated position, adjust pin" else null,
                 cond.ifEmpty { null },
                 pkgs.takeIf { it.isNotEmpty() }?.let { p ->
                     val zones = p.mapNotNull { it.truckZone }.distinct()

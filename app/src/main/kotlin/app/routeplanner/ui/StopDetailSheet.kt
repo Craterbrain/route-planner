@@ -155,8 +155,11 @@ class StopDetailSheet(private val act: Activity, private val host: RouteHost, pr
         section("Drop-off point")
         val moved = st.access != st.target
         body.addFull(act.label(14f, M.attr.colorOnSurfaceVariant).apply {
-            text = if (moved) "Navigation goes to your adjusted pin (remembered for this address)."
-            else "Navigation goes to the address pin."
+            text = when {
+                moved -> "Navigation goes to your adjusted pin (remembered for this address)."
+                st.approximate -> "Estimated position (interpolated or street-level). Adjust the pin so navigation goes to the right door."
+                else -> "Navigation goes to the address pin."
+            }
         })
         if (host.mapAvailable) body.addFull(act.button("Adjust pin on map", M.attr.materialButtonOutlinedStyle) {
             closeThen { host.pickDropOff(st.id) }

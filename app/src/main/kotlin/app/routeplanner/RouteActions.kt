@@ -148,6 +148,7 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
             val msg = "${route.stops.size} stops, about ${formatDuration(route.totalSec)}\nTimes: ${src.label}" +
                 (if (degraded) " (some legs estimated)" else "") +
                 (if (route.lateStops > 0) "\n${route.lateStops} stops can't be reached on time" else "") +
+                (if (m.warnings.isNotEmpty()) "\n\nEstimated positions (adjust the pin):\n" + m.warnings.joinToString("\n") else "") +
                 (if (m.errors.isNotEmpty()) "\n\nSkipped:\n" + m.errors.joinToString("\n") else "") +
                 "\n\nTap Start route when you're ready."
             alert("Route planned", msg)
@@ -155,9 +156,10 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
     }
 
     /** Adds a stop (door at [door]) to the route, creating a route if there is none, then refreshes ETAs. */
-    fun addStopAt(address: String, door: LatLng, typed: String? = null) {
+    fun addStopAt(address: String, door: LatLng, typed: String? = null, approximate: Boolean = false) {
         val pin = prefs.addressMemory.access(address) ?: typed?.let { prefs.addressMemory.access(it) }
-        val stop = Stop(UUID.randomUUID().toString(), address, door, pin ?: door)
+        // A remembered drop-off pin beats any looked-up position.
+        val stop = Stop(UUID.randomUUID().toString(), address, door, pin ?: door, approximate = approximate && pin == null)
         val s = SessionStore.session
         if (s == null) {
             SessionStore.set(act, newSession(listOf(stop.copy(optimizedIndex = 1)), emptyList()))
@@ -168,6 +170,16 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
         val n = SessionStore.session?.stop(stop.id)?.optimizedIndex ?: 1
         replan(optimize = false, showBusy = false)
         ui.snack("Added stop $n", "Optimize") { replan(optimize = true, showBusy = true) }
+    }
+
+    /** Imports an offline address pack (addresses.sqlite) after validating it. */
+    fun importAddressPack(uri: Uri, done: () -> Unit) {
+        val dlg = busy("Importing address data…", "Checking the file")
+        background({ AddressPack.import(act, uri); AddressPack.summary(act) ?: "" }) { r ->
+            dlg.close()
+            r.fold({ ui.snack("Address data ready: $it") }, { alert("Address data not imported", it.message ?: it.toString()) })
+            done()
+        }
     }
 
     /** Copies a valhalla_tiles.tar into app storage for on-device routing. */

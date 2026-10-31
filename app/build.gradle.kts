@@ -12,8 +12,8 @@ android {
         minSdk = 26
         targetSdk = 35
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
-        versionCode = 5
-        versionName = "0.5.0"
+        versionCode = 6
+        versionName = "0.6.0"
     }
 
     buildTypes {
@@ -40,6 +40,8 @@ dependencies {
     implementation(libs.valhalla.models)
     implementation(libs.valhalla.models.config)
     implementation(libs.maplibre)
+    // Chromium network stack from Google Play services (Google suggestions only; absent = plain client).
+    implementation(libs.play.services.cronet)
     // Already pulled in by material; declared because we use them directly.
     implementation(libs.androidx.recyclerview)
     implementation(libs.androidx.coordinatorlayout)

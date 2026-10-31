@@ -6,8 +6,8 @@ A Circuit-style delivery route optimizer, targeting **Android**. Design brief: [
 
 | Path | What |
 |---|---|
-| `core/` | Pure-Kotlin/JVM engine (no Android deps): manifest import, solver (first/last, windows, route clock), route state machine and edits (move, make next, reverse, remove), route summary, Photon geocoder, nav deep links. JUnit tests. |
-| `app/` | Android app (Kotlin, platform Views + Material 3; deps: `core-ktx`, `material`, `valhalla-mobile`, `maplibre`). `MainActivity` (screen wiring), `RouteActions` (import / add / optimize off the UI thread), `AddressSearch` (geocoder chain), `NetStatus` (reachability), `SessionStore`, `Prefs`, `Routing`, `OverlayService` (floating button); `ui/`: `RouteMap` (MapLibre pins + diagnostics), `SearchPanel` (suggestions), `RouteSheet` + `StopAdapter` (bottom sheet, next-stop card, swipe/drag list), `StopDetailSheet`, `PermissionsSheet`, `Dialogs`, `Ui` helpers. |
+| `core/` | Pure-Kotlin/JVM engine (no Android deps): manifest import, solver (first/last, windows, route clock), route state machine and edits (move, make next, reverse, remove), route summary, suggestion chain (`Suggest.kt`: providers, ranking, merger, circuit breaker), Google suggest parser (`google/`), offline address pack normalizer + search (`address/`), Photon geocoder, nav deep links. JUnit tests. |
+| `app/` | Android app (Kotlin, platform Views + Material 3; deps: `core-ktx`, `material`, `valhalla-mobile`, `maplibre`). `MainActivity` (screen wiring), `RouteActions` (import / add / optimize off the UI thread), `AddressSearch` (provider chain), `AddressPack` (offline address data over read-only SQLite), `GoogleTransport` (Play services Cronet or plain HTTP), `NetStatus` (reachability), `SessionStore`, `Prefs`, `Routing`, `OverlayService` (floating button); `ui/`: `RouteMap` (MapLibre pins + diagnostics), `SearchPanel` (suggestions), `RouteSheet` + `StopAdapter` (bottom sheet, next-stop card, swipe/drag list), `StopDetailSheet`, `PermissionsSheet`, `Dialogs`, `Ui` helpers. |
 | `tools/` | `build-tiles.sh`: builds the on-device routing data from an OSM extract (Docker/Podman). |
 | `prototype/` | Original zero-dep Node version of the core, kept as a reference. |
 
@@ -30,7 +30,8 @@ Manifest CSV columns: `address,lat,lng,package,zone,priority,window_start,window
 - **Depot:** optimizing, ETAs and the road-time matrix start from the route start (matrix index 0). Once you've finished a stop, re-planning starts from your current position (else the last finished stop). Round trips add the drive back to the finish time and distance.
 - **Search bias:** address search (search bar, CSV import) is biased to the start: the platform geocoder looks in a ~55 km box around it first, and Photon gets `lat`/`lon` with `zoom=10` and `location_bias_scale=0.1`.
 - **Route screen:** full-screen map with numbered stop pins (current stop larger, in the tertiary color; delivered dimmed with ✓; failed in red with !) and a dashed line through the remaining stops in order. Pins are drawn as bitmaps, so they show even when the basemap can't load (then the map is a plain themed background). A small **map status chip** under the search bar says what the map is doing ("loading basemap…", "style loaded · tiles ok", "no network access · pins only · tap to retry", "N tile errors"); MapLibre and network problems are also logged under the logcat tag `RoutePlanner`.
-- **Search bar:** suggestions appear under it as you type (400 ms debounce, 3+ characters, stale lookups dropped). Lookup chain: the phone's geocoder if it has one and it answers, else **Photon** (OpenStreetMap, no key; URL configurable in Settings). No results or no network say so ("No matches", "Couldn't reach address search", "No network access…"). The mic fills the bar by voice. The ⋮ menu has Import spreadsheet, Optimize, Update times, Reverse, Show whole route, Floating button (on/off), Permissions & network, Settings and Clear route. Long-press the map to drop a stop or move the current stop's drop-off pin.
+- **Search bar:** rows appear as you type. First your own (instant, no network): recent places, this route's stops and saved drop-off pins, matched on word prefixes. Then, after a 350 ms pause and 3+ characters, the first source in this chain that answers: **Google suggestions** (unofficial, see below; skipped while its circuit breaker is open) → **offline address pack** → **the phone's geocoder** → **Photon (OSM)**. A caption names the source ("Suggestions: Google"). Every row has a fill-in arrow that copies its text into the box without picking it. A typed house number ranks results whose street words match (minus a point for a different direction or street type), then nearest to the start. Digits-only input keeps only results within 80 km of the start. Rows with an estimated position (interpolated, street-level) say so, and the stop shows "Estimated position, adjust pin". Empty or failed lookups say so ("No matches", "Couldn't reach address search", "No network access…"). The mic fills the bar by voice. The ⋮ menu has Import spreadsheet, Optimize, Update times, Reverse, Show whole route, Floating button (on/off), Permissions & network, Settings and Clear route. Long-press the map to drop a stop, set the start, or move the current stop's drop-off pin.
+- **Full addresses** (spreadsheet rows without lat/lng): offline pack exact or interpolated hit → the phone's geocoder (on phones with Play services this is Google's geocoder, no key needed) → Google's top suggestion → Photon → the pack's estimated position. Rows that only got an estimated position are listed after import and flagged on the stop. A remembered drop-off pin always wins over any looked-up position.
 - **Floating button (overlay):** a round button over Google Maps / Waze; drag it (it snaps to the nearest edge, position remembered), tap to expand: current stop, ◄ (previous stop, set back to pending) ✓ Delivered ✗ Failed ► Next, Open app, Close. It collapses after Delivered/Failed/Open app, hides while Route Planner itself is on screen, and its notification has a Stop action.
 - **Permissions & network sheet:** shown on first launch and from ⋮ or Settings. One row each for Network (actually tests the map and geocoder hosts; explains GrapheneOS's per-app Network toggle with a button to App info), Location, Notifications (Android 13+), Display over other apps (opens the system screen; the floating button starts only once it's granted), and optional battery-optimization exemption. Re-checked every time the app resumes; nothing blocks the app.
 - **Bottom sheet:** empty state (import / add); planning (stop count, time, distance, "done by", late warning, **Optimize** and **Start route**); driving (a next-stop card with ETA, address, first/last and window, notes, **package finder**, **Navigate**, **Failed** / **Proof** / **Delivered**, and ◄ ► to browse without changing anything); finished (summary + new route). Below it is the stop list: swipe left = Delivered (Undo on finished stops), swipe right = Navigate, drag the handle to reorder, tap for details.
@@ -50,17 +51,36 @@ Manifest CSV columns: `address,lat,lng,package,zone,priority,window_start,window
 | Live injection | add stop any time (search, voice, long-press): appended with fresh ETAs, then **Optimize** from the snackbar or menu |
 | Proof of delivery | **Proof** button / long-press **Delivered**: note + photo (system camera app, stored in app files via `FileProvider`), shown in stop details. Signature not yet |
 
+## Google suggestions (unofficial)
+
+The user chose this knowingly for a small private distribution.
+
+- **What it is:** while you type, the app sends the same request the Google Maps website sends from its search box (`www.google.com/s?tbm=map&suggest=p…`), with no account and no API key. It is not an official API and using it this way is against Google's terms. It can change or stop working at any time.
+- **What is sent:** the typed text (3+ characters, after a 350 ms pause), a location bias (the route start), and, as with any request, your IP address. Headers are those of desktop Chrome on Windows. The claimed Chrome version is the version of the Chromium network stack (Cronet) from Google Play services that carries the request, so the headers and the connection agree. Without Play services the request goes over plain HTTP and claims Chrome `GoogleWeb.FALLBACK_CHROME_MAJOR` (141). No cookies are needed: verified on 2026-10-31 with a handful of requests from a US connection, with no consent redirect. No per-install fingerprints, no timing jitter and no remote configuration. Every request constant is in one file, `core/.../google/GoogleSuggest.kt` (`GoogleWeb`), so a format change is a one-file update. The typed text is never logged.
+- **When it fails:** three failures in a row (network errors or a reply the parser can't read) open a circuit breaker for 10 minutes. The app then uses the offline pack, the phone's geocoder and Photon, and the suggestion list says "Google suggestions unavailable, using offline/OSM".
+- **Switch it off:** Settings → Address search → "Google suggestions (unofficial)". The other sources keep working.
+
+## Offline address data
+
+An imported address pack (`addresses.sqlite`, one US state, built by `tools/build-addresses.py`, format in [docs/address-pack.md](docs/address-pack.md)) answers typed addresses on the phone with no network. Import it in Settings → Address data. The file is copied to app storage, checked (`PRAGMA user_version = 1`, `meta.format = 1`) and opened read-only. Settings shows its state, address count, build date, release and the attribution from its `meta` table.
+
+- The search is a line-for-line Kotlin port of `tools/query-address.py`: word tries, a half-typed last word, comma text as city/ZIP filter, then exact → interpolated → nearest mapped house → street centroid, never interpolating across different city/ZIP groups, ranked by locality match, distance band from the start, match type, direction and word fit. The normalizer passes all 124 shared vectors in `tools/address-normalize-cases.json` (the core test reads that file directly). The Kotlin search returns the same answers as the Python reference: the committed fixture replays 11 public queries, and 5 more were checked on the build machine from a local fixture.
+- Ranking follows the reference: the distance band from the start comes before match type. So with a start set, a nearby nearest-house estimate can rank above an exact house more than 10 km away.
+- **License (unverified):** Overture lists the National Address Database under the "National Address Database Access and Usage License". Every row says `LicenseRef-Public-Domain-US`. The license text could not be fetched (transportation.gov blocked the request), so it has not been read. Read it before distributing a pack.
+
 ## Privacy
 
-- **Address search:** when the phone has no geocoder of its own (or it returns nothing), what you type in the search bar (3+ characters, after a 400 ms pause), CSV addresses without coordinates, and long-pressed map points are sent to the Photon server: the public instance at photon.komoot.io unless you set your own in Settings. Requests carry a descriptive User-Agent and a location bias (your last known position or the route's centre), but no account or ID.
+- **Address search:** with Google suggestions on, typed text goes to Google (see above). The phone's geocoder (Google's on phones with Play services) gets full addresses, and long-pressed points for reverse lookup. Photon (photon.komoot.io unless you set your own) gets text only when the sources before it had nothing. The offline pack and the local rows send nothing. Recent places are stored on the phone (up to 50; remove them in Settings → Recent searches).
 - **Map tiles:** fetched from tiles.openfreemap.org (which reveals the map area you view).
 - Everything else (route, proof photos, pins) stays on the phone.
 
 ## Offline behaviour
 
-Without network the route list, stop editing, delivery/proof, the floating button and on-device Valhalla road times all work. The map falls back to pins on a plain background, and the search bar says it needs network (long-press the map or import a CSV with lat/lng instead).
+Without network the route list, stop editing, delivery/proof, the floating button and on-device Valhalla road times all work. The map falls back to pins on a plain background. With an imported address pack, typed addresses and spreadsheet rows still resolve offline; without one the search bar says it needs network (long-press the map or import a CSV with lat/lng instead).
 
 ## Not yet verified on a device
+
+**0.6.0** adds Google suggestions over Play services' Cronet, local suggestions with fill-in arrows, the offline address pack, and approximate-position flags. None of it has run on hardware. Check: suggestions appearing as you type (and which source the caption names), that Settings shows "Chromium network stack N (Google Play services)" rather than plain HTTP, the breaker message when Google fails, importing `addresses.sqlite` (125 MB copy) and offline lookups with Wi-Fi off, and the estimated-position flags.
 
 **0.5.0** adds the required route start and has not been run on hardware either. Check: the fresh location fix (accuracy, timeout fallback to last known, location switched off), the gating card, picking the start on the map, the S pin and start row, round trip totals, and that search results near the start come first.
 
@@ -71,7 +91,7 @@ Blank map, best-supported cause: the beige was MapLibre's default "foreground lo
 Check first:
 
 - Map status chip text on the phone, with the Network permission on and off; pins and the dashed line on the fallback background; that tiles appear once network is allowed and the chip is tapped.
-- Search suggestions from Photon on a phone without Play services; the error texts.
+- Search suggestions and their error texts.
 - Floating button: dragging, edge snapping, expand/collapse, Close, the notification's Stop action, hiding while the app is in front, and the permission flow (turn on → Settings → back → starts).
 - Swipe gestures leave no leftover strip; snackbars sit above the nav bar/keyboard and disappear on their own.
 - Next-stop card buttons on one line at large font sizes.
@@ -97,7 +117,7 @@ Check first:
 
 1. Run on a device; fix what breaks (nothing below has run on hardware yet).
 2. Build a tile extract for a home region and verify on-device matrix end to end.
-3. End at a chosen address (core supports it; no UI yet). A no-key address source better than Photon (being researched).
+3. End at a chosen address (core supports it; no UI yet). Centerline snapping for street-level address hits; packs for more states.
 4. Offline map regions (MapLibre `OfflineManager`, within OpenFreeMap's download limits); address/ETA labels on pins.
 5. Barcode + label OCR (ML Kit bundled, CameraX).
 6. Signature capture; export proof of delivery.
@@ -118,7 +138,9 @@ Principle: add a dependency only where it replaces a large amount of work; use s
 | Label OCR | **ML Kit text recognition, bundled** + **CameraX** | Bundled = offline, no Play Services (~4 MB/script/ABI). Raise CameraX analysis resolution above 640x480. |
 | Package barcodes | **ML Kit barcode scanning, bundled** | More reliable than OCR for tracking numbers. |
 | Voice input | **Platform `RecognizerIntent`** | Zero deps; offline availability varies by device. Vosk rejected (40-50 MB/model, weaker). |
-| Geocoding | **Platform `android.location.Geocoder`**, then **Photon** over plain `HttpURLConnection` (no new library) | Platform geocoder is absent on phones without Play services. Photon: OSM data, no key, GeoJSON parsed with core `Json`; public instance by default, self-hostable (Settings). Fair use: debounce, ≥3 chars, User-Agent. |
+| Geocoding | Google suggest (unofficial, keyless) → offline pack (own SQLite, no library) → **platform `android.location.Geocoder`** → **Photon** over plain `HttpURLConnection` | The platform geocoder is Google-backed on phones with Play services and absent without them. Photon: OSM data, no key, GeoJSON parsed with core `Json`; public instance by default, self-hostable (Settings). Fair use: debounce, ≥3 chars, User-Agent. |
+| Google connection | **`com.google.android.gms:play-services-cronet` 18.1.1** (Google Maven) | Chromium's network stack from Google Play services, used only for the Google suggestion request. It needs Play services on the phone; without them the request falls back to plain HTTP. Adds about 0.9 MB to the APK (play-services-base, basement, tasks and cronet-api; no native libraries, since Cronet itself lives in Play services). Play services keeps its Chrome version current. The embedded `org.chromium.net:cronet-embedded` (Maven stops at 143, ~6 MB of native code per ABI) is **not** shipped. |
+| Offline addresses | Own pack format, read with platform `SQLiteDatabase` | No FTS5/JSON1 needed. 125 MB for Tennessee. |
 | Local DB (pins, history) | Plain SharedPreferences JSON now; **Room** when queries are needed | |
 | HTTP | `HttpURLConnection` + `org.json` | OkHttp only if needed. |
 | Avoid | Mapbox proprietary SDK, Vosk, Play Services variants, Fused Location | Keeps the app GrapheneOS-friendly (use platform `LocationManager`). |

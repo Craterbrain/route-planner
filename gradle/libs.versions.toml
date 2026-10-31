@@ -7,6 +7,7 @@ valhalla = "0.6.4"
 valhallaModels = "0.6.0"
 junit = "4.13.2"
 maplibre = "13.7.1"
+playCronet = "18.1.1"
 recyclerview = "1.1.0"
 coordinatorlayout = "1.1.0"
 
@@ -19,6 +20,7 @@ valhalla-models-config = { group = "io.github.rallista", name = "valhalla-models
 maplibre = { group = "org.maplibre.gl", name = "android-sdk-opengl", version.ref = "maplibre" }
 androidx-recyclerview = { group = "androidx.recyclerview", name = "recyclerview", version.ref = "recyclerview" }
 androidx-coordinatorlayout = { group = "androidx.coordinatorlayout", name = "coordinatorlayout", version.ref = "coordinatorlayout" }
+play-services-cronet = { group = "com.google.android.gms", name = "play-services-cronet", version.ref = "playCronet" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 
 [plugins]

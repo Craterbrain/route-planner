@@ -96,5 +96,5 @@ object NetStatus {
 
 /** Version string without enabling BuildConfig generation. */
 object BuildConfigLite {
-    const val VERSION = "0.5.0"
+    const val VERSION = "0.6.0"
 }
