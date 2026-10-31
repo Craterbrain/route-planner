@@ -1,33 +1,51 @@
 # route-planner
 
-A Circuit-style delivery route optimizer. Design brief: [docs/idea.md](docs/idea.md).
+A Circuit-style delivery route optimizer, targeting **Android**. Design brief: [docs/idea.md](docs/idea.md).
 
-Zero dependencies (Node ≥ 20). This repo is the **core engine**; apps, map UI and server come later (see roadmap).
+## Layout
 
-## What works now
+| Path | What |
+|---|---|
+| `core/` | Pure-Kotlin/JVM engine (no Android deps): manifest import, solver, route state machine, nav deep links. JUnit tests. |
+| `app/` | Android app (Kotlin, platform Views, only `core-ktx` as a dependency): CSV import, route list, package-finder card, action bar, floating overlay. |
+| `prototype/` | Original zero-dep Node version of the core, kept as a reference. |
 
-| Idea point | Module | Status |
-|---|---|---|
-| 1. Target vs. access point per stop, driver pin adjustment | `manifest.js`, `session.adjustAccessPoint` | model + adjust hook; geocoding not wired |
-| 3. VRPTW solver (priority, windows, service time, ETAs) | `solver.js` | single vehicle: nearest-feasible + 2-opt/or-opt |
-| 3. Distance matrix | `geo.js` | offline haversine; provider shape matches OSRM/VROOM |
-| 4. Packages, truck zones, original/optimized index, CSV import | `manifest.js`, `session.finder` | done |
-| 5. Nav deep links (Google/Apple/Waze) | `deeplink.js` | done |
-| 6. Action-bar state machine, failure reasons, live stop injection | `session.js` | done |
+## Build
 
-## Usage
+System JDK 27 breaks Gradle here; use JDK 17:
 
 ```sh
-npm test
-node src/cli.js examples/manifest.csv 39.79,-89.65 waze
+J=-Dorg.gradle.java.home=$HOME/.gradle/jdks/eclipse_adoptium-17-amd64-linux.2
+./gradlew :core:test :app:assembleDebug $J
+# APK: app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Manifest CSV columns: `address,lat,lng,package,zone,priority,window_start,window_end,service_min,notes`.
+Manifest CSV columns: `address,lat,lng,package,zone,priority,window_start,window_end,service_min,notes`
+(example: `prototype/examples/manifest.csv`).
+
+## Status vs. the idea doc
+
+| Idea point | Status |
+|---|---|
+| 1. Door target + street access point per stop; driver pin adjust | model + `adjustAccessPoint`; **no geocoder or pin-drag UI yet** |
+| 2. Map (MapLibre, offline tiles) | not started (the one planned heavy dependency) |
+| 3. VRPTW | single vehicle: priority, windows, service time, ETAs (nearest-feasible + 2-opt/or-opt). Matrix is offline haversine behind `MatrixProvider`; OSRM provider next |
+| 4. Packages, truck zones, indexes, CSV import | done; OCR scanner not started |
+| 5. Deep links | Google/Waze launched from the app (Apple Maps link exists in core, iOS only) |
+| 6. Action bar + overlay | in-app bar and a `SYSTEM_ALERT_WINDOW` foreground-service overlay (◄ ✓ ✗ ►); fail-reason dialog; auto-navigate; route persists across process death |
+| Live injection | in core (`RouteSession.inject`); no UI yet |
+| Proof of delivery, voice input | not started |
+
+## Not yet verified on a device
+
+The APK builds but has not been run on a phone or emulator. First thing to check: overlay permission flow, and that `✓` with auto-navigate launches Maps from over another app.
 
 ## Roadmap
 
-1. Geocoding adapter (Mapbox/Google) filling `target`/`access`; persisted per-address pin overrides.
-2. OSRM matrix provider + VROOM/OR-Tools solver behind the same `solve` interface.
-3. Server (Postgres/PostGIS) with sync; proof of delivery storage.
-4. Mobile app (MapLibre, offline tiles, Android overlay for the action bar).
-5. Label OCR and voice address entry.
+1. Run on a device; fix what breaks.
+2. Geocoding adapter (Mapbox/Google) + per-address pin overrides in a local DB.
+3. OSRM/VROOM provider behind `MatrixProvider`.
+4. MapLibre map, offline regions, pin-drag.
+5. Add-stop UI (live injection), proof of delivery (photo/signature/note).
+6. Label OCR (ML Kit), voice address entry.
+7. Server + sync (Postgres/PostGIS).
