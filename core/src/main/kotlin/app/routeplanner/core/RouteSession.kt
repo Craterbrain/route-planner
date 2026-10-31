@@ -221,6 +221,13 @@ class RouteSession(
     /** Driver moved the drop-off pin of [id]. Returns the stop so the caller can persist per-address. */
     fun setAccess(id: String, p: LatLng): Stop? = edit(id) { it.copy(access = p) }
 
+    /**
+     * The driver says where an estimated stop really is: the door and the drop-off both move there and the
+     * "estimated position" flag is cleared. A stop that wasn't estimated only gets a new drop-off point.
+     */
+    fun placeStop(id: String, p: LatLng): Stop? =
+        edit(id) { if (it.approximate) it.copy(target = p, access = p, approximate = false) else it.copy(access = p) }
+
     /** Driver moved the drop-off pin of the current stop. */
     fun adjustAccessPoint(p: LatLng): Stop? = current?.let { setAccess(it.id, p) }
 

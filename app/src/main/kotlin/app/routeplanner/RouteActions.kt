@@ -156,15 +156,15 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
     }
 
     /** Adds a stop (door at [door]) to the route, creating a route if there is none, then refreshes ETAs. */
-    fun addStopAt(address: String, door: LatLng, typed: String? = null, approximate: Boolean = false, packageId: String? = null, notes: String = "") {
+    fun addStopAt(address: String, door: LatLng, typed: String? = null, approximate: Boolean = false, packageId: String? = null, notes: String = ""): String? {
         val s0 = SessionStore.session
         // A second parcel for an address already on the route joins that stop instead of duplicating it.
         s0?.pendingStopAt(address)?.let { existing ->
-            if (packageId == null) { ui.snack("Already on the route: stop ${existing.optimizedIndex}"); return }
+            if (packageId == null) { ui.snack("Already on the route: stop ${existing.optimizedIndex}"); return existing.id }
             s0.addPackage(Pkg(packageId, existing.id))
             SessionStore.commit(act)
             ui.snack("Package added to stop ${existing.optimizedIndex}")
-            return
+            return existing.id
         }
         val pin = prefs.addressMemory.access(address) ?: typed?.let { prefs.addressMemory.access(it) }
         // A remembered drop-off pin beats any looked-up position.
@@ -180,6 +180,7 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
         val n = SessionStore.session?.stop(stop.id)?.optimizedIndex ?: 1
         replan(optimize = false, showBusy = false)
         ui.snack("Added stop $n" + if (packageId != null) " with package" else "", "Optimize") { replan(optimize = true, showBusy = true) }
+        return stop.id
     }
 
     /** Imports an offline address pack (addresses.sqlite) after validating it. */

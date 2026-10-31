@@ -37,4 +37,15 @@ class DeliveryReportTest {
         s.undo("a")
         assertNull(s.stops[0].proofSignature)
     }
+
+    @Test fun placingAnEstimatedStopMovesDoorAndDropOffAndClearsTheFlag() {
+        val s = RouteSession(listOf(
+            Stop("a", "1 Maybe St", LatLng(1.0, 1.0), approximate = true, optimizedIndex = 1),
+            Stop("b", "2 Sure St", LatLng(2.0, 2.0), optimizedIndex = 2),
+        ), emptyList())
+        val a = s.placeStop("a", LatLng(5.0, 6.0))!!
+        assertEquals(LatLng(5.0, 6.0), a.target); assertEquals(LatLng(5.0, 6.0), a.access); assertFalse(a.approximate)
+        val b = s.placeStop("b", LatLng(3.0, 3.0))!!
+        assertEquals(LatLng(2.0, 2.0), b.target); assertEquals(LatLng(3.0, 3.0), b.access) // a confirmed stop only gets a new drop-off
+    }
 }

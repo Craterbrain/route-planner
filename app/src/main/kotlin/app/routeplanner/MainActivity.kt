@@ -125,7 +125,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         sheetParams.behavior = BottomSheetBehavior<LinearLayout>()
         root.addView(sheet.view, sheetParams)
         // Search suggestions float above the sheet, under the search bar.
-        searchPanel = SearchPanel(this, search, { actions.addressSearch() }) { s, typed ->
+        searchPanel = SearchPanel(this, search, { actions.addressSearch() }, onAddAnyway = { text -> addAnyway(text) }) { s, typed ->
             hideKeyboard()
             val p = s.point ?: return@SearchPanel
             prefs.addRecent(s)
@@ -505,7 +505,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         if (stopId == RouteMap.START_ID) { endPick(); startAtPoint(p); return }
         if (stopId == RouteMap.END_ID) { endPick(); endAtPoint(p); return }
         val s = SessionStore.session
-        val st = s?.setAccess(stopId, p)
+        val st = s?.placeStop(stopId, p)
         endPick()
         if (s == null || st == null) return
         prefs.addressMemory.remember(st.address, p)
@@ -674,10 +674,36 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
             val hit = r.getOrNull()
             if (hit?.point != null) actions.addStopAt(hit.label.ifEmpty { address }, hit.point!!, typed = address, approximate = hit.approximate, notes = name?.let { "For $it" }.orEmpty())
             else {
+                // Just fill the box: the panel looks it up and offers "Add anyway" if nothing confirms it.
                 this.search.setText(address)
-                searchPanel.submit()
-                snack("Couldn't confirm that address. Pick the right match, or edit it.")
+                this.search.setSelection(this.search.text.length)
+                snack("Couldn't confirm that address. Pick a match, edit it, or add it anyway.")
             }
+        }
+    }
+
+    /**
+     * "Add anyway": the text goes on the route as typed even though nothing confirmed it. It is placed at the best
+     * guess available (the top result of any source, else the town/ZIP part, else the route start), flagged as an
+     * estimate, and the driver is asked to tap the map where it really is.
+     */
+    private fun addAnyway(text: String) {
+        val start = currentStart()?.point
+        val search = actions.addressSearch()
+        val busy = Dialogs.busy(this, "Adding…")
+        actions.background({
+            fun guess(q: String) = (search.suggest(q, 3) as? AddressSearch.Outcome.Found)?.items?.firstOrNull { it.point != null }?.point
+            guess(text) ?: text.substringAfter(',', "").trim().takeIf { it.length >= 3 }?.let { guess(it) } ?: start
+        }) { r ->
+            busy.dismiss()
+            if (isFinishing || isDestroyed) return@background
+            val at = r.getOrNull()
+            if (at == null) { snack("Set a starting point first, then add it again."); return@background }
+            val id = actions.addStopAt(text, at, typed = text, approximate = true) ?: return@background
+            if (map != null) {
+                pickDropOff(id)
+                snack("Added at an estimated spot. Tap the map where it really is.")
+            } else snack("Added at an estimated spot. Adjust it in the stop's details.")
         }
     }
 

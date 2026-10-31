@@ -12,6 +12,7 @@ import android.widget.LinearLayout
 import app.routeplanner.AddressSearch
 import app.routeplanner.R
 import app.routeplanner.color
+import app.routeplanner.core.AddressMatch
 import app.routeplanner.core.PhotonGeocoder
 import app.routeplanner.core.Suggestion
 import app.routeplanner.core.SuggestRanker
@@ -30,6 +31,8 @@ class SearchPanel(
     private val act: Activity,
     private val field: EditText,
     private val search: () -> AddressSearch,
+    /** Adds the typed text as a stop even though nothing confirmed it (placed approximately; the driver fixes the pin). */
+    private val onAddAnyway: (String) -> Unit,
     private val onPick: (Suggestion, String) -> Unit,
 ) {
     companion object { const val DEBOUNCE_MS = 350L }
@@ -89,9 +92,13 @@ class SearchPanel(
             act.runOnUiThread {
                 if (my != token || act.isDestroyed || field.text.toString().trim() != q) return@runOnUiThread
                 when (r) {
-                    is AddressSearch.Outcome.Found -> show(SuggestRanker.merge(localNow, r.items), q, captionFor(r.source), r.note)
-                    is AddressSearch.Outcome.Empty -> show(localNow, q, null, listOfNotNull(r.note, "No matches for “$q”").joinToString("\n"))
-                    is AddressSearch.Outcome.Failed -> { show(localNow, q, null, r.message); s.recheckNetwork() }
+                    is AddressSearch.Outcome.Found -> {
+                        // An address (starts with a house number) that none of the rows confirms can still be added as typed.
+                        val unconfirmed = q.firstOrNull()?.isDigit() == true && r.items.none { AddressMatch.matches(q, it) }
+                        show(SuggestRanker.merge(localNow, r.items), q, captionFor(r.source), r.note, anyway = unconfirmed)
+                    }
+                    is AddressSearch.Outcome.Empty -> show(localNow, q, null, listOfNotNull(r.note, "No matches for “$q”").joinToString("\n"), anyway = true)
+                    is AddressSearch.Outcome.Failed -> { show(localNow, q, null, r.message, anyway = true); s.recheckNetwork() }
                 }
             }
         }.start()
@@ -110,16 +117,38 @@ class SearchPanel(
         setPadding(act.dp(20), act.dp(8), act.dp(20), act.dp(8))
     }
 
-    private fun show(items: List<Suggestion>, typed: String, caption: String?, message: String?) {
+    private fun show(items: List<Suggestion>, typed: String, caption: String?, message: String?, anyway: Boolean = false) {
         shown = items
         rows.removeAllViews()
         for (it in items) rows.addView(row(it, typed), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         message?.let { rows.addFull(status(it)) }
+        if (anyway && typed.length >= 5) rows.addFull(addAnywayRow(typed))
         caption?.let { rows.addFull(act.label(11f, M.attr.colorOnSurfaceVariant).apply {
             text = "Suggestions: $it"
             setPadding(act.dp(20), act.dp(2), act.dp(20), act.dp(8))
         }) }
         card.visibility = if (rows.childCount > 0) View.VISIBLE else View.GONE
+    }
+
+    /** Last row when nothing confirms the typed address: add it as typed. */
+    private fun addAnywayRow(typed: String): View {
+        val row = act.horizontal().apply {
+            setPadding(act.dp(20), act.dp(10), act.dp(16), act.dp(10))
+            isClickable = true
+            isFocusable = true
+            val tv = android.util.TypedValue()
+            if (act.theme.resolveAttribute(android.R.attr.selectableItemBackground, tv, true)) background = act.getDrawable(tv.resourceId)
+            setOnClickListener { clear(); onAddAnyway(typed) }
+        }
+        row.addView(ImageView(act).apply {
+            setImageResource(R.drawable.ic_add)
+            setColorFilter(act.color(M.attr.colorPrimary))
+        }, LinearLayout.LayoutParams(act.dp(24), act.dp(24)).apply { marginEnd = act.dp(16) })
+        val texts = act.vertical()
+        texts.addFull(act.label(15f, M.attr.colorPrimary, bold = true, lines = 1).apply { text = "Add “$typed” anyway" })
+        texts.addFull(act.label(12f, M.attr.colorOnSurfaceVariant).apply { text = "Placed at an estimated spot; you set the pin on the map." })
+        row.addWeighted(texts)
+        return row
     }
 
     private fun row(s: Suggestion, typed: String): View {
