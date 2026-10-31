@@ -80,7 +80,7 @@ object AddrNorm {
         "and" to "and",
     )
 
-    private val STREET_TYPES = setOf(
+    internal val STREET_TYPES = setOf(
         "aly", "ave", "bnd", "blvd", "byp", "cir", "ct", "cv", "dr", "expy", "ext",
         "fwy", "hwy", "ln", "loop", "pkwy", "pike", "pl", "plz", "rd", "sq", "st",
         "ter", "trce", "trl", "tpke", "way", "xing",

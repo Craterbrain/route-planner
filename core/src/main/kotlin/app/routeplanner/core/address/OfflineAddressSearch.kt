@@ -93,10 +93,11 @@ class OfflineAddressSearch(private val store: AddressStore) {
         if (words.isNotEmpty() && words[0].first().isDigit()) { numberRaw = words[0]; words = words.drop(1).toMutableList() }
 
         var unitRaw = ""
-        for (i in words.indices) {
-            if (i > 0 && words[i].lowercase().trim('.') in UNIT_WORDS) {
-                unitRaw = words.subList(i + 1, minOf(i + 2, words.size)).joinToString(" ")
-                words = (words.subList(0, i) + words.subList(minOf(i + 2, words.size), words.size)).toMutableList()
+        // Scan from the END: "Highland Courtyard Apartment Loop apt 206" has a unit word inside the street name.
+        for (i in words.size - 2 downTo 1) {
+            if (words[i].lowercase().trim('.') in UNIT_WORDS) {
+                unitRaw = words[i + 1]
+                words = (words.subList(0, i) + words.subList(i + 2, words.size)).toMutableList()
                 break
             }
         }
@@ -117,7 +118,9 @@ class OfflineAddressSearch(private val store: AddressStore) {
     }
 
     /** 2 = all query tokens whole, from the start; 1 = last one half-typed; 0 = no match. */
-    fun wordMatch(q: List<String>, norm: List<String>): Int {
+    fun wordMatch(q: List<String>, norm0: List<String>): Int {
+        // A leading directional kept in norm ("East Cove Road" -> "e cv rd") is skipped if the query lacks it.
+        val norm = if (norm0.isNotEmpty() && norm0[0] in AddrNorm.DIRS && q.isNotEmpty() && q[0] != norm0[0]) norm0.drop(1) else norm0
         if (q.size > norm.size) return 0
         for (i in q.indices) {
             if (norm[i] == q[i]) continue
@@ -153,8 +156,16 @@ class OfflineAddressSearch(private val store: AddressStore) {
             var wantDir = ""
             if (qt.size > 1 && qt.last() in AddrNorm.DIRS) { wantDir = qt.last(); qt = qt.dropLast(1) }
             val qs = qt.joinToString(" ")
-            val rows = store.streetsInRange(qs, nextPrefix(qs), postcode.ifEmpty { null }, 5000)
-                .filter { wordMatch(qt, it.norm.split(' ')) > 0 }
+            val found = store.streetsInRange(qs, nextPrefix(qs), postcode.ifEmpty { null }, 5000).toMutableList()
+            // Also look behind a leading directional: norms such as 'e cv rd' keep it in front, so "Cove Rd" and
+            // "Cove Rd East" must find them. Only worth the extra scans when every typed word is a type or directional.
+            if (qt[0] !in AddrNorm.DIRS && qt.all { it in AddrNorm.STREET_TYPES || it in AddrNorm.DIRS }) {
+                for (d in AddrNorm.DIRS.sorted()) {
+                    val qd = "$d $qs"
+                    found += store.streetsInRange(qd, nextPrefix(qd), postcode.ifEmpty { null }, 5000)
+                }
+            }
+            val rows = found.filter { wordMatch(qt, it.norm.split(' ')) > 0 }
             if (rows.isEmpty()) continue
             val loc = locTyped + AddrNorm.normalizePlace(words.subList(k, words.size).joinToString(" "))
             val good = rows.filter { localityOk(loc, it) }

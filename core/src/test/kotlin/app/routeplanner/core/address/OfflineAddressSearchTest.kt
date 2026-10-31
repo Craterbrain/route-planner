@@ -194,4 +194,22 @@ class OfflineAddressSearchTest {
         assertTrue(approx.approximate)
         assertTrue(approx.subtitle.contains("Estimated position"))
     }
+
+    @Test fun unitWordInsideStreetNameIsNotTheUnit() {
+        val p = s.parseQuery("100 Highland Courtyard Apartment Loop apt 206")
+        assertEquals("206", p.house.unit)
+        assertEquals(listOf("Highland", "Courtyard", "Apartment", "Loop"), p.words)
+    }
+
+    @Test fun leadingDirectionalStreetFoundWithoutIt() {
+        val store = FakeAddressStore(
+            listOf(street(7, "East Cove Road", "Crab Orchard", "37723", 35.9, -84.8)),
+            listOf(pt(7, 50, 35.9, -84.8)),
+        )
+        val search = OfflineAddressSearch(store)
+        for (q in listOf("50 Cove Rd", "50 Cove Rd East", "50 East Cove Road")) {
+            val r = search.search(q)
+            assertEquals(q, "East Cove Road", r.firstOrNull()?.streetName)
+        }
+    }
 }
