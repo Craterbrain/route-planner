@@ -12,8 +12,8 @@ android {
         minSdk = 26
         targetSdk = 35
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
     }
 
     buildTypes {
@@ -39,4 +39,8 @@ dependencies {
     implementation(libs.valhalla.mobile)
     implementation(libs.valhalla.models)
     implementation(libs.valhalla.models.config)
+    implementation(libs.maplibre)
+    // Already pulled in by material; declared because we use them directly.
+    implementation(libs.androidx.recyclerview)
+    implementation(libs.androidx.coordinatorlayout)
 }

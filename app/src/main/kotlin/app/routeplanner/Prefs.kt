@@ -23,6 +23,11 @@ class Prefs(ctx: Context) {
         get() = sp.getBoolean("autoNavigate", false)
         set(v) = sp.edit().putBoolean("autoNavigate", v).apply()
 
+    /** Show the MapLibre map above the stop list (off = list only, no tile downloads). */
+    var showMap: Boolean
+        get() = sp.getBoolean("showMap", true)
+        set(v) = sp.edit().putBoolean("showMap", v).apply()
+
     /** Drop-off pins the driver corrected, remembered per normalized address. */
     val addressMemory = object : AddressMemory {
         private fun read() = JSONObject(sp.getString("pins", "{}")!!)
@@ -40,8 +45,25 @@ class Prefs(ctx: Context) {
 class PlatformGeocoder(ctx: Context) : Geocoder {
     private val g = AndroidGeocoder(ctx.applicationContext, Locale.getDefault())
 
+    /** A search suggestion: formatted address and its position. */
+    class Candidate(val label: String, val point: LatLng)
+
+    override fun geocode(address: String): LatLng? = candidates(address, 1).firstOrNull()?.point
+
+    /** Up to [max] matches for the add-stop search bar. Empty when the device has no geocoder. */
     @Suppress("DEPRECATION")
-    override fun geocode(address: String): LatLng? =
+    fun candidates(address: String, max: Int = 5): List<Candidate> =
+        if (!AndroidGeocoder.isPresent()) emptyList()
+        else g.getFromLocationName(address, max).orEmpty().map { a ->
+            val line = (0..a.maxAddressLineIndex).joinToString(", ") { a.getAddressLine(it).orEmpty() }.ifBlank { address }
+            Candidate(line, LatLng(a.latitude, a.longitude))
+        }
+
+    /** Street address at [p], or null (no geocoder / nothing found). */
+    @Suppress("DEPRECATION")
+    fun reverse(p: LatLng): String? =
         if (!AndroidGeocoder.isPresent()) null
-        else g.getFromLocationName(address, 1)?.firstOrNull()?.let { LatLng(it.latitude, it.longitude) }
+        else runCatching { g.getFromLocation(p.lat, p.lng, 1) }.getOrNull()?.firstOrNull()?.let { a ->
+            (0..a.maxAddressLineIndex).joinToString(", ") { a.getAddressLine(it).orEmpty() }.ifBlank { null }
+        }
 }

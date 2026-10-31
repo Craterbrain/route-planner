@@ -6,6 +6,9 @@ material = "1.12.0"
 valhalla = "0.6.4"
 valhallaModels = "0.6.0"
 junit = "4.13.2"
+maplibre = "13.7.1"
+recyclerview = "1.1.0"
+coordinatorlayout = "1.1.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -13,6 +16,9 @@ material = { group = "com.google.android.material", name = "material", version.r
 valhalla-mobile = { group = "io.github.rallista", name = "valhalla-mobile", version.ref = "valhalla" }
 valhalla-models = { group = "io.github.rallista", name = "valhalla-models", version.ref = "valhallaModels" }
 valhalla-models-config = { group = "io.github.rallista", name = "valhalla-models-config", version.ref = "valhallaModels" }
+maplibre = { group = "org.maplibre.gl", name = "android-sdk-opengl", version.ref = "maplibre" }
+androidx-recyclerview = { group = "androidx.recyclerview", name = "recyclerview", version.ref = "recyclerview" }
+androidx-coordinatorlayout = { group = "androidx.coordinatorlayout", name = "coordinatorlayout", version.ref = "coordinatorlayout" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 
 [plugins]

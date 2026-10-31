@@ -1,0 +1,240 @@
+package app.routeplanner.ui
+
+import android.content.Context
+import android.graphics.drawable.GradientDrawable
+import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
+import android.widget.LinearLayout
+import androidx.core.view.ViewCompat
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import app.routeplanner.R
+import app.routeplanner.color
+import app.routeplanner.core.*
+import com.google.android.material.R as M
+import com.google.android.material.bottomsheet.BottomSheetDragHandleView
+import com.google.android.material.card.MaterialCardView
+
+/**
+ * The stop-list bottom sheet under the map, Circuit-style:
+ * - empty: how to add stops;
+ * - planning: route summary + Optimize / Start route;
+ * - driving: a next-stop card with Navigate, Failed, Delivered and prev/next;
+ * - finished: a completion summary.
+ * Below the header is the full stop list.
+ */
+class RouteSheet(private val ctx: Context, private val host: RouteHost) {
+    val view: LinearLayout = ctx.vertical()
+    /** Everything above the list; its height is the sheet's collapsed (peek) height. */
+    val header: LinearLayout = ctx.vertical(padH = 16)
+    val handle = BottomSheetDragHandleView(ctx)
+    private val adapter = StopAdapter(ctx, host)
+    val list = RecyclerView(ctx)
+
+    init {
+        val r = ctx.dpf(28f)
+        view.background = GradientDrawable().apply {
+            cornerRadii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f)
+            setColor(ctx.color(M.attr.colorSurfaceContainerLow))
+        }
+        ViewCompat.setElevation(view, ctx.dpf(6f))
+        view.isClickable = true // don't let taps fall through to the map
+        view.addView(handle, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        view.addView(header, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        list.layoutManager = LinearLayoutManager(ctx)
+        list.adapter = adapter
+        list.clipToPadding = false
+        list.setPadding(ctx.dp(8), ctx.dp(4), ctx.dp(8), ctx.dp(8))
+        adapter.touchHelper.attachToRecyclerView(list)
+        view.addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+    }
+
+    /** Bottom system-bar inset, so the last row isn't under the navigation bar. */
+    fun setBottomInset(px: Int) = list.setPadding(ctx.dp(8), ctx.dp(4), ctx.dp(8), ctx.dp(8) + px)
+
+    fun render(s: RouteSession?) {
+        header.removeAllViews()
+        if (s == null || s.stops.isEmpty()) {
+            emptyState()
+            if (!adapter.dragging) adapter.submit(emptyList())
+            return
+        }
+        val sum = s.summary()
+        when {
+            !s.started -> planningHeader(s, sum)
+            s.done -> finishedHeader(s, sum)
+            else -> drivingHeader(s, sum)
+        }
+        if (!adapter.dragging) adapter.submit(rows(s, sum))
+    }
+
+    // ---- Headers -------------------------------------------------------------
+
+    private fun emptyState() {
+        header.addFull(ctx.label(22f, bold = true).apply { text = "Plan your route" }, topDp = 4)
+        header.addFull(ctx.label(14f, M.attr.colorOnSurfaceVariant).apply {
+            text = "Add stops with the search bar (type or speak), long-press the map to drop one, or import a spreadsheet of addresses."
+        }, topDp = 4, bottomDp = 12)
+        val row = ctx.horizontal()
+        row.addWeighted(ctx.button("Import spreadsheet", M.attr.materialButtonOutlinedStyle) { host.importCsv() }, marginDp = 4)
+        row.addWeighted(ctx.button("Add stop", icon = R.drawable.ic_add) { host.focusSearch() }, marginDp = 4)
+        header.addFull(row, bottomDp = 12)
+    }
+
+    private fun summaryLine(s: RouteSession, sum: RouteSummary, remainingOnly: Boolean): String {
+        val imperial = imperialUnits()
+        val dist = if (remainingOnly) sum.remainingMeters else sum.totalMeters
+        return listOfNotNull(
+            formatDuration(sum.remainingSec),
+            dist.takeIf { it > 0 }?.let { formatDistance(it, imperial) },
+            "done by ${ctx.clock(s, sum.finishSec)}",
+        ).joinToString(" · ")
+    }
+
+    private fun planningHeader(s: RouteSession, sum: RouteSummary) {
+        header.addFull(ctx.label(22f, bold = true).apply {
+            text = if (sum.total == 1) "1 stop" else "${sum.total} stops"
+        }, topDp = 0)
+        header.addFull(ctx.label(14f, M.attr.colorOnSurfaceVariant).apply { text = summaryLine(s, sum, remainingOnly = true) })
+        if (sum.lateStops > 0) header.addFull(ctx.label(13f, M.attr.colorError).apply {
+            text = "${sum.lateStops} ${if (sum.lateStops == 1) "stop" else "stops"} can't be reached on time"
+        }, topDp = 2)
+        if (s.dirty) changedBanner()
+        val row = ctx.horizontal()
+        row.addWeighted(ctx.tonal(ctx.button("Optimize") { host.optimize() }), marginDp = 4)
+        row.addWeighted(ctx.button("Start route", icon = R.drawable.ic_navigation) { host.startRoute() }, marginDp = 4)
+        header.addFull(row, topDp = 10, bottomDp = 8)
+    }
+
+    /** Circuit-style "preview changes": keep the order with fresh times, or re-optimize. */
+    private fun changedBanner() {
+        val box = ctx.horizontal().apply {
+            background = ctx.roundRect(M.attr.colorTertiaryContainer, 12)
+            setPadding(ctx.dp(12), ctx.dp(2), ctx.dp(4), ctx.dp(2))
+        }
+        box.addWeighted(ctx.label(13f, M.attr.colorOnTertiaryContainer).apply { text = "Route changed" })
+        box.addView(ctx.button("Update", M.attr.borderlessButtonStyle) { host.update() })
+        box.addView(ctx.button("Optimize", M.attr.borderlessButtonStyle) { host.optimize() })
+        header.addFull(box, topDp = 8, bottomDp = 4)
+    }
+
+    private fun drivingHeader(s: RouteSession, sum: RouteSummary) {
+        val c = s.current ?: return
+        if (s.dirty) changedBanner()
+        val card = MaterialCardView(ctx).apply {
+            setCardBackgroundColor(ctx.color(M.attr.colorPrimaryContainer))
+            radius = ctx.dpf(24f)
+            cardElevation = 0f
+            strokeWidth = 0
+        }
+        val body = ctx.vertical(padH = 12, padV = 8)
+        card.addView(body)
+        val onCard = M.attr.colorOnPrimaryContainer
+
+        // [<]  Stop 3 of 12 · ETA 10:42  [>]
+        val top = ctx.horizontal()
+        top.addView(ctx.iconButton(R.drawable.ic_chevron_left, "Previous stop") { host.prev() })
+        val pendingAfter = s.stops.count { it.status == Status.PENDING }
+        top.addWeighted(ctx.label(14f, onCard).apply {
+            gravity = Gravity.CENTER
+            text = "Stop ${c.optimizedIndex} of ${s.stops.size}" +
+                (if (c.status == Status.PENDING) " · ETA ${ctx.clock(s, sum.projectedEta(c))}" else " · ${c.status.name.lowercase()}") +
+                "\n$pendingAfter left · ${summaryLine(s, sum, remainingOnly = true)}"
+        })
+        top.addView(ctx.iconButton(R.drawable.ic_chevron_right, "Next stop") { host.next() })
+        body.addFull(top)
+
+        val (l1, l2) = splitAddress(c.address)
+        val addr = ctx.vertical().apply {
+            isClickable = true
+            setOnClickListener { host.openStop(c.id) }
+        }
+        addr.addFull(ctx.label(22f, onCard, bold = true, lines = 2).apply { text = l1 })
+        if (l2.isNotEmpty()) addr.addFull(ctx.label(14f, onCard, lines = 1).apply { text = l2 })
+        val tags = conditions(s, c, sum)
+        if (tags.isNotEmpty()) addr.addFull(ctx.label(13f, if (c.lateSec > 0) M.attr.colorError else onCard).apply { text = tags }, topDp = 4)
+        if (c.notes.isNotBlank()) addr.addFull(ctx.label(13f, onCard, lines = 3).apply { text = "Note: ${c.notes}" }, topDp = 2)
+        body.addFull(addr, topDp = 2)
+
+        // Package finder: what to grab and where it is in the vehicle.
+        val pkgs = s.finder(c)
+        if (pkgs.isNotEmpty()) {
+            val pf = ctx.vertical(padH = 12, padV = 8).apply { background = ctx.roundRect(M.attr.colorSurface, 14) }
+            pf.addFull(ctx.label(11f, M.attr.colorOnSurfaceVariant, bold = true).apply { text = "PACKAGE FINDER" })
+            for (p in pkgs) pf.addFull(ctx.label(15f).apply {
+                text = "${p.id}  ·  ${p.truckZone ?: "no location set"}"
+            }, topDp = 2)
+            body.addFull(pf, topDp = 8)
+        }
+
+        body.addFull(ctx.tonal(ctx.button("Navigate", icon = R.drawable.ic_navigation) { host.navigate(c.id) }), topDp = 8)
+        val actions = ctx.horizontal()
+        if (c.status == Status.PENDING) {
+            actions.addWeighted(ctx.button("Failed", M.attr.materialButtonOutlinedStyle, R.drawable.ic_close) { host.fail(c.id) }, 1f, marginDp = 2)
+            actions.addWeighted(ctx.button("Proof", M.attr.materialButtonOutlinedStyle) { host.deliverWithProof(c.id) }, 0.9f, marginDp = 2)
+            actions.addWeighted(ctx.button("Delivered", icon = R.drawable.ic_check) { host.deliver(c.id) }.apply {
+                setOnLongClickListener { host.deliverWithProof(c.id); true }
+            }, 1.4f, height = ctx.dp(56), marginDp = 2)
+        } else {
+            actions.addWeighted(ctx.button("Undo", M.attr.materialButtonOutlinedStyle) { host.undo(c.id) }, marginDp = 2)
+        }
+        body.addFull(actions, topDp = 2)
+        header.addFull(card, topDp = 0, bottomDp = 8)
+    }
+
+    private fun finishedHeader(s: RouteSession, sum: RouteSummary) {
+        header.addFull(ctx.label(22f, bold = true).apply { text = "Route complete" })
+        header.addFull(ctx.label(14f, M.attr.colorOnSurfaceVariant).apply {
+            text = listOfNotNull(
+                "${sum.delivered} delivered",
+                sum.failed.takeIf { it > 0 }?.let { "$it failed" },
+                sum.totalMeters.takeIf { it > 0 }?.let { formatDistance(it, imperialUnits()) },
+            ).joinToString(" · ")
+        })
+        val row = ctx.horizontal()
+        row.addWeighted(ctx.button("New route", M.attr.materialButtonOutlinedStyle) { host.clearRoute() }, marginDp = 4)
+        row.addWeighted(ctx.button("Import spreadsheet") { host.importCsv() }, marginDp = 4)
+        header.addFull(row, topDp = 10, bottomDp = 8)
+    }
+
+    // ---- Rows ----------------------------------------------------------------
+
+    /** "First · 09:00–11:00 · late 12 min" for a stop. */
+    private fun conditions(s: RouteSession, st: Stop, sum: RouteSummary): String = listOfNotNull(
+        st.placement.takeIf { it != Placement.AUTO }?.let { placementLabel(it) },
+        st.window?.let { ctx.windowLabel(s, it) },
+        st.window?.takeIf { st.status == Status.PENDING && sum.projectedEta(st) > it.last }?.let { "late" },
+    ).joinToString(" · ")
+
+    private fun rows(s: RouteSession, sum: RouteSummary): List<StopAdapter.Row> {
+        val cur = s.current?.takeIf { s.started }
+        return s.stops.map { st ->
+            val (l1, l2) = splitAddress(st.address)
+            val pkgs = s.finder(st)
+            val cond = conditions(s, st, sum)
+            val meta = listOfNotNull(
+                cond.ifEmpty { null },
+                pkgs.takeIf { it.isNotEmpty() }?.let { p ->
+                    val zones = p.mapNotNull { it.truckZone }.distinct()
+                    "${p.size} pkg" + (if (p.size > 1) "s" else "") + if (zones.isEmpty()) "" else ": " + zones.joinToString(", ")
+                },
+                st.notes.takeIf { it.isNotBlank() }?.let { "Note: $it" },
+                st.failReason?.let { FAIL_LABELS[it] },
+            ).joinToString(" · ")
+            val time = when (st.status) {
+                Status.PENDING -> ctx.clock(s, sum.projectedEta(st))
+                else -> st.completedAt?.let { android.text.format.DateFormat.getTimeFormat(ctx).format(java.util.Date(it)) } ?: ""
+            }
+            StopAdapter.Row(st, st.id == cur?.id, l1, l2, meta, cond.contains("late"), time)
+        }
+    }
+
+    /** Scrolls the list so the current stop is visible. */
+    fun scrollToCurrent(s: RouteSession) {
+        if (s.cursor in s.stops.indices) (list.layoutManager as? LinearLayoutManager)?.scrollToPositionWithOffset(s.cursor, ctx.dp(8))
+    }
+
+    /** Hides the list when the sheet is just a header (no stops). */
+    fun listVisible(v: Boolean) { list.visibility = if (v) View.VISIBLE else View.GONE }
+}
