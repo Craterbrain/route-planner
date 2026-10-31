@@ -38,13 +38,57 @@ class LabelParserTest {
         assertFalse(r.primary!!.isReturn)
     }
 
-    @Test fun similarSizesKeepReadingOrderAndAreNotCalledReturn() {
+    @Test fun similarSizesPutTheLowerAddressFirstAndNeitherIsCalledReturn() {
         val r = LabelParser.parse(listOf(
             LabelParser.OcrLine("1 A ST", 40f), LabelParser.OcrLine("TOWN TN 11111", 40f),
             LabelParser.OcrLine("2 B ST", 38f), LabelParser.OcrLine("CITY TN 22222", 38f),
         ))
-        assertEquals(listOf("1 A St, Town TN 11111", "2 B St, City TN 22222"), r.addresses)
+        assertEquals(listOf("2 B St, City TN 22222", "1 A St, Town TN 11111"), r.addresses)
         assertTrue(r.candidates.none { it.isReturn })
+    }
+
+    // Lines as ML Kit would give them for a real USPS Parcel Select label (heights in pixels, from the photo).
+    private val usps = listOf(
+        "CARRIER - LEAVE IF NO RESPONSE" to 26f, "U.S. POSTAGE PAID" to 20f, "AFS" to 18f, "eVS" to 16f,
+        "USPS PARCEL SELECT" to 48f,
+        "FSD1" to 19f, "6700 N MARION RD" to 19f, "SIOUX FALLS SD 57107 - 6490" to 19f, "R049" to 34f,
+        "ADDRESS SERVICE REQUESTED" to 22f,
+        "JAMES VIDUSKI" to 27f, "469 FAIR OAKS RD" to 27f, "CROSSVILLE TN 38572-3338" to 27f,
+        "USPS TRACKING # eVS" to 26f, "9361 2897 2426 9887 3647 49" to 22f,
+        "FSD1" to 44f, "MDW5" to 44f, "BNA7" to 44f, "TYS5" to 44f, "D 001" to 40f, "B 001" to 40f,
+    ).map { LabelParser.OcrLine(it.first, it.second) }
+
+    @Test fun realUspsLabelRecipientIsPrimaryAndTheWarehouseIsTheReturnAddress() {
+        val r = LabelParser.parse(usps)
+        assertEquals(listOf("469 Fair Oaks Rd, Crossville TN 38572", "6700 N Marion Rd, Sioux Falls SD 57107"), r.addresses)
+        assertFalse(r.candidates[0].isReturn)
+        assertTrue(r.candidates[1].isReturn)
+    }
+
+    @Test fun recipientNameIsCapturedAndWarehouseCodesAreNot() {
+        val r = LabelParser.parse(usps)
+        assertEquals("James Viduski", r.candidates[0].name)
+        assertNull(r.candidates[1].name) // "FSD1" has a digit, so it is not a name
+        assertNull(LabelParser.parse("ADDRESS SERVICE REQUESTED\n5 ELM RD\nCROSSVILLE TN 38555").primary!!.name)
+    }
+
+    @Test fun uspsLabelStillWorksWhenOcrDropsTheSizes() {
+        // No heights at all: the lower address is the recipient's.
+        val r = LabelParser.parse(usps.map { LabelParser.OcrLine(it.text) })
+        assertEquals("469 Fair Oaks Rd, Crossville TN 38572", r.primary!!.address)
+    }
+
+    @Test fun mailerEndorsementsAreNotReturnCues() {
+        val r = LabelParser.parse("RETURN SERVICE REQUESTED\nJANE DOE\n22 OAK AVE\nCROSSVILLE TN 38555")
+        assertEquals(LabelParser.Role.UNKNOWN, r.primary!!.role)
+        assertFalse(r.primary!!.isReturn)
+    }
+
+    @Test fun zipPlusFourWithAnyDashIsRecognizedAndTrimmed() {
+        for (zip in listOf("38572-3338", "38572 - 3338", "38572\u20133338", "38572 \u2014 3338", "38572")) {
+            val r = LabelParser.parse("469 FAIR OAKS RD\nCROSSVILLE TN $zip")
+            assertEquals(zip, listOf("469 Fair Oaks Rd, Crossville TN 38572"), r.addresses)
+        }
     }
 
     @Test fun aLoneReturnAddressIsStillOfferedAndFlagged() {

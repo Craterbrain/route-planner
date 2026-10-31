@@ -156,7 +156,7 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
     }
 
     /** Adds a stop (door at [door]) to the route, creating a route if there is none, then refreshes ETAs. */
-    fun addStopAt(address: String, door: LatLng, typed: String? = null, approximate: Boolean = false, packageId: String? = null) {
+    fun addStopAt(address: String, door: LatLng, typed: String? = null, approximate: Boolean = false, packageId: String? = null, notes: String = "") {
         val s0 = SessionStore.session
         // A second parcel for an address already on the route joins that stop instead of duplicating it.
         s0?.pendingStopAt(address)?.let { existing ->
@@ -168,7 +168,7 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
         }
         val pin = prefs.addressMemory.access(address) ?: typed?.let { prefs.addressMemory.access(it) }
         // A remembered drop-off pin beats any looked-up position.
-        val stop = Stop(UUID.randomUUID().toString(), address, door, pin ?: door, approximate = approximate && pin == null)
+        val stop = Stop(UUID.randomUUID().toString(), address, door, pin ?: door, notes = notes, approximate = approximate && pin == null)
         val pkgs = listOfNotNull(packageId?.let { Pkg(it, stop.id) })
         val s = SessionStore.session
         if (s == null) {

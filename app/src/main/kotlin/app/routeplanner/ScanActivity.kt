@@ -182,17 +182,17 @@ class ScanActivity : AppCompatActivity() {
         results.addFull(label(12f, M.attr.colorPrimary, bold = true).apply {
             text = if (primary.isReturn) "ONLY A RETURN ADDRESS SEEN" else "DELIVERY ADDRESS"
         })
-        results.addFull(compact(button("Add: ${primary.address}") { finishWith(address = primary.address) }), topDp = 6)
+        results.addFull(compact(button("Add: ${primary.address}") { finishWith(address = primary.address, name = primary.name) }), topDp = 6)
         for (c in ranked.drop(1).take(2)) {
             val tag = if (c.isReturn) "Return address" else "Other address"
-            results.addFull(compact(button("$tag: ${c.address}", M.attr.materialButtonOutlinedStyle) { finishWith(address = c.address) }), topDp = 6)
+            results.addFull(compact(button("$tag: ${c.address}", M.attr.materialButtonOutlinedStyle) { finishWith(address = c.address, name = c.name) }), topDp = 6)
         }
     }
 
-    private fun finishWith(address: String? = null, code: String? = null) {
+    private fun finishWith(address: String? = null, code: String? = null, name: String? = null) {
         if (finished) return
         finished = true
-        setResult(RESULT_OK, Intent().putExtra(EXTRA_ADDRESS, address).putExtra(EXTRA_CODE, code))
+        setResult(RESULT_OK, Intent().putExtra(EXTRA_ADDRESS, address).putExtra(EXTRA_CODE, code).putExtra(EXTRA_NAME, name))
         finish()
     }
 
@@ -208,6 +208,7 @@ class ScanActivity : AppCompatActivity() {
         const val MODE_FIND = "find"
         const val EXTRA_ADDRESS = "address"
         const val EXTRA_CODE = "code"
+        const val EXTRA_NAME = "name"
         private const val REQ_CAMERA = 31
     }
 }

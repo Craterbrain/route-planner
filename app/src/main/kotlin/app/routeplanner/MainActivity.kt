@@ -665,14 +665,14 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
      * A tapped address from Scan label: confirm it with Google (see [AddressSearch.validate]) and add it
      * straight away; only if nothing confirms it does it go into the search bar to be picked or edited.
      */
-    private fun addScanned(address: String) {
+    private fun addScanned(address: String, name: String?) {
         val search = actions.addressSearch()
         val busy = Dialogs.busy(this, "Checking the address…")
         actions.background({ search.validate(address) }) { r ->
             busy.dismiss()
             if (isFinishing || isDestroyed) return@background
             val hit = r.getOrNull()
-            if (hit?.point != null) actions.addStopAt(hit.label.ifEmpty { address }, hit.point!!, typed = address, approximate = hit.approximate)
+            if (hit?.point != null) actions.addStopAt(hit.label.ifEmpty { address }, hit.point!!, typed = address, approximate = hit.approximate, notes = name?.let { "For $it" }.orEmpty())
             else {
                 this.search.setText(address)
                 searchPanel.submit()
@@ -859,7 +859,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
                 searchPanel.submit()
             }
             REQ_PHOTO -> Toast.makeText(this, "Photo attached", Toast.LENGTH_SHORT).show()
-            REQ_SCAN_LABEL -> data?.getStringExtra(ScanActivity.EXTRA_ADDRESS)?.let { addScanned(it) } ?: snack("No address read")
+            REQ_SCAN_LABEL -> data?.getStringExtra(ScanActivity.EXTRA_ADDRESS)?.let { addScanned(it, data.getStringExtra(ScanActivity.EXTRA_NAME)) } ?: snack("No address read")
             REQ_SCAN_FIND -> data?.getStringExtra(ScanActivity.EXTRA_CODE)?.let { code ->
                 val s = SessionStore.session
                 val hit = s?.findPackage(code)
