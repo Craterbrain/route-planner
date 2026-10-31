@@ -29,6 +29,7 @@ DIRS = set(DIRECTIONALS.values())
 UNIT_WORDS = {"apt", "apartment", "unit", "ste", "suite", "#", "lot", "rm", "room", "bldg", "trlr"}
 STATE_WORDS = {"tn", "tennessee", "usa", "us"}  # only stripped from the END of the text
 MAX_CANDIDATE_STREETS = 300
+NEAR_BAND_M = 25000  # within a match tier, results this close to --near rank first
 
 # Match types, best first.
 EXACT, INTERPOLATED, NEAREST, STREET = "exact", "interpolated", "nearest-house", "street"
@@ -267,11 +268,14 @@ def search_parsed(db, house, words, loc_words, postcode, near):
         st = s[2].split()
         dir_ok = (not info["dir"]) or (info["dir"] in st)
         d = dist(lat, lon)
-        bucket = 0 if d < 10000 else (1 if d < 50000 else (2 if d < 150000 else 3))
+        # Match quality before distance: an exact house never loses to a nearby
+        # estimate. Within a tier, houses within NEAR_BAND_M of --near come first
+        # (same street + number in another town), then street fit, then distance.
+        band = 0 if d < NEAR_BAND_M else 1
         key = (
-            0 if info["locality_ok"] else 1,
-            bucket,                       # nearer beats farther, when --near given
+            0 if info["locality_ok"] else 1,  # a typed city/ZIP that disagrees ranks last
             TYPE_RANK[mtype],
+            band,
             0 if dir_ok else 1,
             2 - word_match(qt, st),       # whole words before half-typed
             len(st),                      # 'main st' before 'main st n' when undirected

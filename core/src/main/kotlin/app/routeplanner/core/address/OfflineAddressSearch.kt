@@ -62,6 +62,8 @@ data class AddressHit(
 class OfflineAddressSearch(private val store: AddressStore) {
     companion object {
         const val MAX_CANDIDATE_STREETS = 300
+        /** Within a match tier, results this close to the start rank first. */
+        const val NEAR_BAND_M = 25_000.0
         private val UNIT_WORDS = setOf("apt", "apartment", "unit", "ste", "suite", "#", "lot", "rm", "room", "bldg", "trlr")
         private val STATE_WORDS = setOf("tn", "tennessee", "usa", "us")
 
@@ -235,11 +237,15 @@ class OfflineAddressSearch(private val store: AddressStore) {
             val st = s.norm.split(' ')
             val dirOk = info.dir.isEmpty() || info.dir in st
             val d = dist(hit.lat, hit.lon)
-            val bucket = if (d < 10_000) 0 else if (d < 50_000) 1 else if (d < 150_000) 2 else 3
+            // Match quality first: an exact house never loses to a nearby estimate. Within a
+            // tier, results within NEAR_BAND_M of the start come first (same street and number
+            // in another town), then street fit, then distance. A contradicting typed city/ZIP
+            // (locality mismatch) ranks last.
+            val band = if (d < NEAR_BAND_M) 0 else 1
             val key = listOf(
                 if (info.localityOk) 0.0 else 1.0,
-                bucket.toDouble(),
                 hit.type.rank.toDouble(),
+                band.toDouble(),
                 if (dirOk) 0.0 else 1.0,
                 (2 - wordMatch(qt, st)).toDouble(),
                 st.size.toDouble(),

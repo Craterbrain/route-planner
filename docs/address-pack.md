@@ -257,9 +257,13 @@ Other helpers, defined in the same file and used by build and query:
       It could come later from OSM ways in the Valhalla extract or from
       Overture transportation segments.
 5. **Rank.** Sort by this key, in order:
-   1. the locality matched;
-   2. distance bucket from `--near` (under 10 km, 50 km, 150 km, farther);
-   3. match type (exact, then interpolated, then nearest-house, then street);
+   1. the locality matched (a typed city or ZIP that contradicts a result
+      puts it last);
+   2. match type (exact, then interpolated, then nearest-house, then
+      street), so an exact house never loses to a nearby estimate;
+   3. within 25 km of `--near` (`NEAR_BAND_M`) before farther. This keeps
+      the same street and number in another town apart without letting an
+      estimate outrank an exact house;
    4. the typed directional matches;
    5. whole words before a half-typed last word;
    6. fewer tokens ("main st" before "main st n" when no directional was

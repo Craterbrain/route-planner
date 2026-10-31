@@ -74,7 +74,29 @@ class OfflineAddressSearchTest {
     /** Optional: -PaddressFixture=... replays a fixture kept outside the repo. */
     @Test fun matchesExtraFixtureWhenGiven() {
         val path = System.getProperty("addressFixture") ?: return
-        replay(load(File(path).inputStream()))
+        val f = load(File(path).inputStream())
+        replay(f)
+        // The reported case: an exact house ~13 km from the start must beat a nearer estimate.
+        f.cases.firstOrNull { it["text"] == "8681 US-70" && it["near"] != null }?.let { c ->
+            val near = (c["near"] as List<*>).let { LatLng(it[0] as Double, it[1] as Double) }
+            assertEquals(MatchType.EXACT, OfflineAddressSearch(f.store).search("8681 US-70", near)[0].type)
+        }
+    }
+
+    /** Exact far house beats a nearby estimate; a typed town that contradicts it flips that. */
+    @Test fun exactBeatsNearbyEstimateInRealData() {
+        val f = load(javaClass.getResourceAsStream("/address-fixture.json.gz")!!)
+        val s = OfflineAddressSearch(f.store)
+        val knoxville = LatLng(35.9606, -83.9207)
+        val far = s.search("2500 west end ave", knoxville)
+        assertEquals(MatchType.EXACT, far[0].type)
+        assertEquals("Nashville", far[0].city)
+        assertTrue((far[0].distM ?: 0) > 200_000)
+        assertEquals(MatchType.NEAREST, far[1].type)
+        assertTrue((far[1].distM ?: Long.MAX_VALUE) < 25_000)
+        val typed = s.search("2500 west end ave, farragut", knoxville)
+        assertEquals(MatchType.NEAREST, typed[0].type)
+        assertEquals("Farragut", typed[0].city)
     }
 
     // ---- Small hand-made store: parsing, layers, ranking ----
@@ -129,6 +151,26 @@ class OfflineAddressSearchTest {
         assertEquals("Shelbyville", s.search("100 main st shelbyv")[0].city) // dropped word as half-typed locality
         assertEquals("Shelbyville", s.search("100 main st", LatLng(35.0, -86.5))[0].city)
         assertEquals("Springfield", s.search("100 main st", LatLng(36.0, -86.0))[0].city)
+    }
+
+    @Test fun rankingTiersThenNearBandThenDistance() {
+        val st = FakeAddressStore(
+            listOf(
+                street(10, "Pine Road", "Near Town", "33333", 36.00, -86.00),   // estimate only, at the start
+                street(11, "Pine Road", "Mid Town", "44444", 36.15, -86.00),    // exact, ~17 km
+                street(12, "Pine Road", "Far Town", "55555", 36.90, -86.00),    // exact, ~100 km
+            ),
+            listOf(
+                pt(10, 40, 36.000, -86.000), pt(10, 60, 36.001, -86.000),       // 50 interpolated here
+                pt(11, 50, 36.150, -86.000),
+                pt(12, 50, 36.900, -86.000),
+            ),
+        )
+        val r = OfflineAddressSearch(st).search("50 pine rd", LatLng(36.0, -86.0))
+        assertEquals(listOf(11L, 12L, 10L), r.map { it.streetId })   // exact near band, exact far, then estimate
+        assertEquals(listOf(MatchType.EXACT, MatchType.EXACT, MatchType.INTERPOLATED), r.map { it.type })
+        // A typed town that only the estimate matches wins: the exact houses contradict it.
+        assertEquals(10L, OfflineAddressSearch(st).search("50 pine rd, near town", LatLng(36.0, -86.0))[0].streetId)
     }
 
     @Test fun neverInterpolatesAcrossGroups() {
