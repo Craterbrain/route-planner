@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="seed_primary">#98CBFF</color>
+    <color name="seed_on_primary">#003354</color>
+    <color name="seed_primary_container">#004A77</color>
+    <color name="seed_on_primary_container">#CFE5FF</color>
+    <color name="seed_secondary">#B8C8DA</color>
+    <color name="seed_on_secondary">#233240</color>
+    <color name="seed_secondary_container">#394857</color>
+    <color name="seed_on_secondary_container">#D4E4F6</color>
+    <color name="seed_error">#FFB4AB</color>
+    <color name="seed_error_container">#93000A</color>
+    <color name="seed_on_error_container">#FFDAD6</color>
+    <color name="seed_surface">#101418</color>
+    <color name="seed_on_surface">#E2E2E6</color>
+    <color name="seed_surface_variant">#42474E</color>
+    <color name="seed_on_surface_variant">#C2C7CF</color>
+    <color name="seed_outline">#8C9199</color>
+</resources>

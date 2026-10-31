@@ -1,3 +1,28 @@
 <resources>
-    <style name="Theme.RoutePlanner" parent="android:Theme.Material.Light.NoActionBar" />
+    <!--
+      Material 3, DayNight: follows the system light/dark setting. On Android 12+
+      RoutePlannerApp swaps in the user's Material You (wallpaper) colors via
+      DynamicColors; the seed_* colors below are only the fallback.
+    -->
+    <style name="Theme.RoutePlanner" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/seed_primary</item>
+        <item name="colorOnPrimary">@color/seed_on_primary</item>
+        <item name="colorPrimaryContainer">@color/seed_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/seed_on_primary_container</item>
+        <item name="colorSecondary">@color/seed_secondary</item>
+        <item name="colorOnSecondary">@color/seed_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/seed_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/seed_on_secondary_container</item>
+        <item name="colorError">@color/seed_error</item>
+        <item name="colorErrorContainer">@color/seed_error_container</item>
+        <item name="colorOnErrorContainer">@color/seed_on_error_container</item>
+        <item name="colorSurface">@color/seed_surface</item>
+        <item name="colorOnSurface">@color/seed_on_surface</item>
+        <item name="colorSurfaceVariant">@color/seed_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/seed_on_surface_variant</item>
+        <item name="colorOutline">@color/seed_outline</item>
+        <item name="android:colorBackground">@color/seed_surface</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
 </resources>

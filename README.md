@@ -7,7 +7,7 @@ A Circuit-style delivery route optimizer, targeting **Android**. Design brief: [
 | Path | What |
 |---|---|
 | `core/` | Pure-Kotlin/JVM engine (no Android deps): manifest import, solver, route state machine, nav deep links. JUnit tests. |
-| `app/` | Android app (Kotlin, platform Views, only `core-ktx` as a dependency): CSV import, route list, package-finder card, action bar, floating overlay. |
+| `app/` | Android app (Kotlin, platform Views + Material 3; deps: `core-ktx`, `material`): CSV import, route list, package-finder card, action bar, floating overlay. |
 | `prototype/` | Original zero-dep Node version of the core, kept as a reference. |
 
 ## Build
@@ -49,3 +49,7 @@ The APK builds but has not been run on a phone or emulator. First thing to check
 5. Add-stop UI (live injection), proof of delivery (photo/signature/note).
 6. Label OCR (ML Kit), voice address entry.
 7. Server + sync (Postgres/PostGIS).
+
+## Theming
+
+Material 3 `DayNight` (`app/src/main/res/values/themes.xml`): follows the system light/dark setting, and on Android 12+ `RoutePlannerApp` applies the user's Material You dynamic colors (`DynamicColors`). Below Android 12 the `seed_*` palette in `values{,-night}/colors.xml` is used. UI code should read colors from theme attributes (`color(M.attr.colorPrimary)`), never hard-code them; code outside an Activity (the overlay service) uses `Context.themed()` from `Themed.kt`.

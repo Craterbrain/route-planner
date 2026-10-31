@@ -3,7 +3,6 @@ package app.routeplanner
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -14,10 +13,15 @@ import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Button
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import com.google.android.material.R as M
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.card.MaterialCardView
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.materialswitch.MaterialSwitch
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import app.routeplanner.core.*
@@ -41,9 +45,15 @@ class MainActivity : Activity() {
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
-    private fun btn(text: String, onClick: () -> Unit) = Button(this).apply {
-        this.text = text
-        setOnClickListener { onClick() }
+    private fun btn(text: String, style: Int = M.attr.materialButtonStyle, onClick: () -> Unit) =
+        MaterialButton(this, null, style).apply {
+            this.text = text
+            setOnClickListener { onClick() }
+        }
+
+    private fun text(size: Float, colorAttr: Int = M.attr.colorOnSurface) = TextView(this).apply {
+        textSize = size
+        setTextColor(color(colorAttr))
     }
 
     override fun onCreate(b: Bundle?) {
@@ -51,31 +61,44 @@ class MainActivity : Activity() {
         SessionStore.load(this)
 
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(16)) }
-        header = TextView(this).apply { textSize = 18f }
-        card = TextView(this).apply { textSize = 16f; setPadding(0, dp(8), 0, dp(8)) }
+        // Edge-to-edge is enforced at targetSdk 35: keep content clear of system bars.
+        ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
+            val b = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            v.setPadding(b.left + dp(16), b.top + dp(16), b.right + dp(16), b.bottom + dp(16))
+            WindowInsetsCompat.CONSUMED
+        }
+        header = text(22f)
+        card = text(16f, M.attr.colorOnPrimaryContainer)
+        val cardView = MaterialCardView(this).apply {
+            setCardBackgroundColor(color(M.attr.colorPrimaryContainer))
+            radius = dp(20).toFloat()
+            cardElevation = 0f
+            addView(card, ViewGroup.LayoutParams(-1, -2))
+            card.setPadding(dp(16), dp(16), dp(16), dp(16))
+        }
 
         val bar = LinearLayout(this).apply { gravity = Gravity.CENTER }
         fun weighted(v: View) = bar.addView(v, LinearLayout.LayoutParams(0, dp(64), 1f))
-        weighted(btn("◄ Prev") { SessionStore.act(this) { prev(); null } })
+        weighted(btn("◄ Prev", M.attr.materialButtonOutlinedStyle) { SessionStore.act(this) { prev(); null } })
         weighted(btn("✓ Delivered") { SessionStore.act(this) { deliver() } })
-        weighted(btn("✗") { showFailDialog() })
-        weighted(btn("Next ►") { SessionStore.act(this) { next(); null } })
+        weighted(btn("✗", M.attr.materialButtonOutlinedStyle) { showFailDialog() })
+        weighted(btn("Next ►", M.attr.materialButtonOutlinedStyle) { SessionStore.act(this) { next(); null } })
 
         val tools = LinearLayout(this).apply { gravity = Gravity.CENTER }
         fun tool(v: View) = tools.addView(v, LinearLayout.LayoutParams(0, -2, 1f))
-        tool(btn("Import CSV") { pickManifest() })
-        tool(btn("Navigate") { navigate() })
-        tool(btn("Bar overlay") { toggleOverlay() })
+        tool(btn("Import CSV", M.attr.borderlessButtonStyle) { pickManifest() })
+        tool(btn("Navigate", M.attr.borderlessButtonStyle) { navigate() })
+        tool(btn("Bar overlay", M.attr.borderlessButtonStyle) { toggleOverlay() })
 
         val prefs = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        val navToggle = btn("") { }
+        val navToggle = btn("", M.attr.borderlessButtonStyle) { }
         navToggle.setOnClickListener {
             val s = SessionStore.session ?: return@setOnClickListener
             s.navApp = if (s.navApp == NavApp.GOOGLE) NavApp.WAZE else NavApp.GOOGLE
             SessionStore.commit(this)
         }
         navToggle.tag = "nav"
-        val auto = Switch(this).apply {
+        val auto = MaterialSwitch(this).apply {
             text = "Auto-navigate"
             setOnCheckedChangeListener { v, on ->
                 if (v.isPressed) { SessionStore.session?.autoNavigate = on; SessionStore.commit(this@MainActivity) }
@@ -86,7 +109,7 @@ class MainActivity : Activity() {
         prefs.addView(auto, LinearLayout.LayoutParams(0, -2, 1f))
 
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        root.addView(header); root.addView(card); root.addView(bar); root.addView(tools); root.addView(prefs)
+        root.addView(header); root.addView(cardView, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, dp(8), 0, dp(8)) }); root.addView(bar); root.addView(tools); root.addView(prefs)
         root.addView(ScrollView(this).apply { addView(list) }, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
         handleIntent(intent)
@@ -107,8 +130,8 @@ class MainActivity : Activity() {
     private fun render() {
         val s = SessionStore.session
         val root = header.parent as ViewGroup
-        val navBtn = root.findViewWithTag<Button>("nav")
-        val auto = root.findViewWithTag<Switch>("auto")
+        val navBtn = root.findViewWithTag<MaterialButton>("nav")
+        val auto = root.findViewWithTag<MaterialSwitch>("auto")
         list.removeAllViews()
         if (s == null) {
             header.text = "No route"
@@ -128,13 +151,19 @@ class MainActivity : Activity() {
             if (c.notes.isNotEmpty()) append("Note: ${c.notes}\n")
             append("Find: " + s.finder().joinToString("  ") { "${it.id} @ ${it.truckZone ?: "?"}" })
         }
-        for (st in s.stops) list.addView(TextView(this).apply {
+        for (st in s.stops) list.addView(text(14f).apply {
             val mark = when (st.status) {
                 Status.COMPLETED -> "✓"; Status.FAILED -> "✗"; Status.SKIPPED -> "–"; Status.PENDING -> "•"
             }
             text = "$mark ${st.optimizedIndex}. ${st.address}  ${clock(st.etaSec.toLong())}" +
                 (if (st.lateSec > 0) "  LATE" else "") + (if (st.priority) " ★" else "")
             textSize = if (st.id == c?.id) 17f else 14f
+            setTextColor(color(when {
+                st.id == c?.id -> M.attr.colorPrimary
+                st.status == Status.FAILED -> M.attr.colorError
+                st.status == Status.PENDING -> M.attr.colorOnSurface
+                else -> M.attr.colorOnSurfaceVariant
+            }))
             setPadding(0, dp(6), 0, dp(6))
             setOnClickListener { if (!st.isCurrent(s)) { s.jumpTo(st.id); SessionStore.commit(this@MainActivity) } }
         })
@@ -147,7 +176,7 @@ class MainActivity : Activity() {
         val s = SessionStore.session ?: return
         if (s.current == null) return
         val reasons = FailReason.values()
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle("Why wasn't it delivered?")
             .setItems(reasons.map { FAIL_LABELS.getValue(it) }.toTypedArray()) { _, i ->
                 SessionStore.act(this) { fail(reasons[i]) }
@@ -184,7 +213,7 @@ class MainActivity : Activity() {
         val text = contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: return
         val m = importManifest(text, dayStartSec = 8 * 3600)
         if (m.stops.isEmpty()) {
-            AlertDialog.Builder(this).setTitle("Nothing imported").setMessage(m.errors.joinToString("\n").ifEmpty { "No rows" }).show()
+            MaterialAlertDialogBuilder(this).setTitle("Nothing imported").setMessage(m.errors.joinToString("\n").ifEmpty { "No rows" }).show()
             return
         }
         val route = Solver.optimize(startPoint(m.stops), m.stops, HaversineMatrix())
@@ -192,7 +221,7 @@ class MainActivity : Activity() {
         val msg = "${route.stops.size} stops, ~${route.totalSec / 60} min" +
             (if (route.lateStops > 0) ", ${route.lateStops} late" else "") +
             (if (m.errors.isNotEmpty()) "\n\nSkipped:\n" + m.errors.joinToString("\n") else "")
-        AlertDialog.Builder(this).setTitle("Route planned").setMessage(msg).setPositiveButton("OK", null).show()
+        MaterialAlertDialogBuilder(this).setTitle("Route planned").setMessage(msg).setPositiveButton("OK", null).show()
     }
 
     /** Where the route starts: last known fix if permitted, else the stops' centroid. */

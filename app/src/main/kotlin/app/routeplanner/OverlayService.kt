@@ -8,7 +8,6 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.os.IBinder
@@ -19,6 +18,7 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.google.android.material.R as M
 import androidx.core.app.ServiceCompat
 
 /**
@@ -58,36 +58,40 @@ class OverlayService : Service() {
         return "#${c.optimizedIndex} ${c.address.substringBefore(',')}"
     }
 
-    private fun button(text: String, color: Int, onClick: () -> Unit) = TextView(this).apply {
+    private fun button(ctx: Context, text: String, bg: Int, fg: Int, onClick: () -> Unit) = TextView(ctx).apply {
         this.text = text
         textSize = 22f
-        setTextColor(Color.WHITE)
+        setTextColor(fg)
         gravity = Gravity.CENTER
         setPadding(36, 28, 36, 28)
-        background = GradientDrawable().apply { cornerRadius = 40f; setColor(color) }
+        background = GradientDrawable().apply { cornerRadius = 40f; setColor(bg) }
         setOnClickListener { onClick() }
     }
 
     private fun addBar() {
         val density = resources.displayMetrics.density
-        val root = LinearLayout(this).apply {
+        // Same theme as the app, including the user's Material You colors.
+        val t = themed()
+        val root = LinearLayout(t).apply {
             orientation = LinearLayout.VERTICAL
             setPadding((8 * density).toInt(), (8 * density).toInt(), (8 * density).toInt(), (8 * density).toInt())
-            background = GradientDrawable().apply { cornerRadius = 48f; setColor(0xE6202124.toInt()) }
+            background = GradientDrawable().apply { cornerRadius = 48f; setColor((t.color(M.attr.colorSurface) and 0xFFFFFF) or 0xE6000000.toInt()) }
         }
-        label = TextView(this).apply {
-            setTextColor(Color.WHITE); textSize = 13f; gravity = Gravity.CENTER; text = describe()
+        label = TextView(t).apply {
+            setTextColor(t.color(M.attr.colorOnSurface)); textSize = 13f; gravity = Gravity.CENTER; text = describe()
         }
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
+        val row = LinearLayout(t).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
         val gap = (6 * density).toInt()
         fun add(v: View) = row.addView(v, LinearLayout.LayoutParams(-2, -2).apply { setMargins(gap, gap, gap, gap) })
-        add(button("◄", 0xFF5F6368.toInt()) { SessionStore.act(this) { prev(); null } })
-        add(button("✓", 0xFF1E8E3E.toInt()) { SessionStore.act(this) { deliver() } })
-        add(button("✗", 0xFFD93025.toInt()) {
+        val neutral = t.color(M.attr.colorSecondaryContainer)
+        val onNeutral = t.color(M.attr.colorOnSecondaryContainer)
+        add(button(t, "◄", neutral, onNeutral) { SessionStore.act(this) { prev(); null } })
+        add(button(t, "✓", t.color(M.attr.colorPrimary), t.color(M.attr.colorOnPrimary)) { SessionStore.act(this) { deliver() } })
+        add(button(t, "✗", t.color(M.attr.colorErrorContainer), t.color(M.attr.colorOnErrorContainer)) {
             startActivity(Intent(this, MainActivity::class.java)
                 .setAction(MainActivity.ACTION_FAIL).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         })
-        add(button("►", 0xFF5F6368.toInt()) { SessionStore.act(this) { next(); null } })
+        add(button(t, "►", neutral, onNeutral) { SessionStore.act(this) { next(); null } })
         root.addView(label)
         root.addView(row)
 
