@@ -3,6 +3,9 @@ agp = "8.8.2"
 kotlin = "2.3.0"
 coreKtx = "1.15.0"
 material = "1.12.0"
+camerax = "1.4.2"
+mlkitBarcode = "17.3.0"
+mlkitText = "16.0.1"
 valhalla = "0.6.4"
 valhallaModels = "0.6.0"
 junit = "4.13.2"
@@ -21,6 +24,12 @@ maplibre = { group = "org.maplibre.gl", name = "android-sdk-opengl", version.ref
 androidx-recyclerview = { group = "androidx.recyclerview", name = "recyclerview", version.ref = "recyclerview" }
 androidx-coordinatorlayout = { group = "androidx.coordinatorlayout", name = "coordinatorlayout", version.ref = "coordinatorlayout" }
 play-services-cronet = { group = "com.google.android.gms", name = "play-services-cronet", version.ref = "playCronet" }
+androidx-camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "camerax" }
+androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
+androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
+androidx-camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
+mlkit-barcode = { group = "com.google.mlkit", name = "barcode-scanning", version.ref = "mlkitBarcode" }
+mlkit-text = { group = "com.google.mlkit", name = "text-recognition", version.ref = "mlkitText" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 
 [plugins]

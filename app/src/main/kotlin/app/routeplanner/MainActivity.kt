@@ -68,6 +68,8 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
     /** The search bar is choosing the route start rather than adding a stop. */
     private var searchingStart = false
     private var searchingEnd = false
+    /** Tracking number from a scanned label, attached to the stop the driver picks next. */
+    private var pendingPackageId: String? = null
     private lateinit var pickLabel: android.widget.TextView
     private var locating = false
     private val refresh = { render() }
@@ -83,6 +85,8 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         private const val REQ_PHOTO = 5
         private const val REQ_START_LOCATION = 8
         private const val REQ_ADDRESSES = 9
+        private const val REQ_SCAN_LABEL = 10
+        private const val REQ_SCAN_FIND = 11
     }
 
     override fun onCreate(b: Bundle?) {
@@ -129,7 +133,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
             prefs.addRecent(s)
             if (searchingEnd) setEnd(RouteEnd(EndMode.ADDRESS, p, s.label))
             else if (searchingStart || currentStart() == null) setStart(RouteStart(p, s.label))
-            else actions.addStopAt(s.label, p, typed, s.approximate)
+            else actions.addStopAt(s.label, p, typed, s.approximate, packageId = pendingPackageId.also { pendingPackageId = null })
         }
         root.addView(searchPanel.card, CoordinatorLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.TOP })
         snackAnchor = android.view.View(this)
@@ -259,6 +263,8 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         val hasPending = s?.stops?.any { it.status == Status.PENDING } == true
         PopupMenu(this, anchor).apply {
             menu.add(0, 1, 0, "Import spreadsheet (CSV)")
+            menu.add(0, 11, 0, "Scan label")
+            if (s != null && s.packages.isNotEmpty()) menu.add(0, 12, 0, "Find package")
             if (hasPending) menu.add(0, 2, 0, "Optimize route")
             if (hasPending) menu.add(0, 3, 0, "Update times (keep order)")
             if (hasPending) menu.add(0, 4, 0, "Reverse route")
@@ -280,6 +286,8 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
                     8 -> clearRoute()
                     9 -> showPermissions()
                     10 -> exportReport()
+                    11 -> if (requireStart()) startActivityForResult(Intent(this@MainActivity, ScanActivity::class.java).putExtra(ScanActivity.EXTRA_MODE, ScanActivity.MODE_LABEL), REQ_SCAN_LABEL)
+                    12 -> startActivityForResult(Intent(this@MainActivity, ScanActivity::class.java).putExtra(ScanActivity.EXTRA_MODE, ScanActivity.MODE_FIND), REQ_SCAN_FIND)
                 }
                 true
             }
@@ -334,7 +342,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
     @Deprecated("Activity back handling; fine for a single-activity app")
     override fun onBackPressed() {
         when {
-            searchPanel.isShowing -> { searchPanel.clear(); searchingStart = false; searchingEnd = false; render() }
+            searchPanel.isShowing -> { searchPanel.clear(); searchingStart = false; searchingEnd = false; pendingPackageId = null; render() }
             map?.pickingFor != null -> endPick()
             behavior.state == BottomSheetBehavior.STATE_EXPANDED && map != null -> behavior.state = BottomSheetBehavior.STATE_COLLAPSED
             else -> @Suppress("DEPRECATION") super.onBackPressed()
@@ -826,6 +834,25 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
                 searchPanel.submit()
             }
             REQ_PHOTO -> Toast.makeText(this, "Photo attached", Toast.LENGTH_SHORT).show()
+            REQ_SCAN_LABEL -> {
+                val address = data?.getStringExtra(ScanActivity.EXTRA_ADDRESS)
+                pendingPackageId = data?.getStringExtra(ScanActivity.EXTRA_CODE)
+                if (address != null) {
+                    search.setText(address)
+                    searchPanel.submit()
+                    snack("Pick the matching address to add it" + if (pendingPackageId != null) " with its package" else "")
+                } else snack(pendingPackageId?.let { "Scanned $it, but no address was read" } ?: "Nothing scanned")
+            }
+            REQ_SCAN_FIND -> data?.getStringExtra(ScanActivity.EXTRA_CODE)?.let { code ->
+                val s = SessionStore.session
+                val hit = s?.findPackage(code)
+                if (hit == null) snack("$code is not on this route")
+                else {
+                    val (pkg, stop) = hit
+                    snack("Stop ${stop.optimizedIndex} · ${pkg.truckZone ?: "location not set"}")
+                    openStop(stop.id)
+                }
+            }
         }
     }
 }

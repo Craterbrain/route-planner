@@ -156,20 +156,30 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
     }
 
     /** Adds a stop (door at [door]) to the route, creating a route if there is none, then refreshes ETAs. */
-    fun addStopAt(address: String, door: LatLng, typed: String? = null, approximate: Boolean = false) {
+    fun addStopAt(address: String, door: LatLng, typed: String? = null, approximate: Boolean = false, packageId: String? = null) {
+        val s0 = SessionStore.session
+        // A second parcel for an address already on the route joins that stop instead of duplicating it.
+        s0?.pendingStopAt(address)?.let { existing ->
+            if (packageId == null) { ui.snack("Already on the route: stop ${existing.optimizedIndex}"); return }
+            s0.addPackage(Pkg(packageId, existing.id))
+            SessionStore.commit(act)
+            ui.snack("Package added to stop ${existing.optimizedIndex}")
+            return
+        }
         val pin = prefs.addressMemory.access(address) ?: typed?.let { prefs.addressMemory.access(it) }
         // A remembered drop-off pin beats any looked-up position.
         val stop = Stop(UUID.randomUUID().toString(), address, door, pin ?: door, approximate = approximate && pin == null)
+        val pkgs = listOfNotNull(packageId?.let { Pkg(it, stop.id) })
         val s = SessionStore.session
         if (s == null) {
-            SessionStore.set(act, newSession(listOf(stop.copy(optimizedIndex = 1)), emptyList()))
+            SessionStore.set(act, newSession(listOf(stop.copy(optimizedIndex = 1)), pkgs))
         } else {
-            s.addStop(stop)
+            s.addStop(stop, pkgs)
             SessionStore.commit(act)
         }
         val n = SessionStore.session?.stop(stop.id)?.optimizedIndex ?: 1
         replan(optimize = false, showBusy = false)
-        ui.snack("Added stop $n", "Optimize") { replan(optimize = true, showBusy = true) }
+        ui.snack("Added stop $n" + if (packageId != null) " with package" else "", "Optimize") { replan(optimize = true, showBusy = true) }
     }
 
     /** Imports an offline address pack (addresses.sqlite) after validating it. */

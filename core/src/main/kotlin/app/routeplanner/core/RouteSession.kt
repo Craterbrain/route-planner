@@ -229,6 +229,24 @@ class RouteSession(
         packages = packages.map { if (it.id == pkgId) it.copy(truckZone = zone?.trim()?.ifEmpty { null }) else it }
     }
 
+    /** Attaches another package to an existing stop (a second parcel for the same address). */
+    fun addPackage(pkg: Pkg) {
+        if (packages.none { it.id == pkg.id }) packages = packages + pkg
+    }
+
+    /** A stop at this address that is still to be done, if any (spacing and case ignored). */
+    fun pendingStopAt(address: String): Stop? {
+        val key = normalizeAddress(address)
+        return stops.firstOrNull { it.status == Status.PENDING && normalizeAddress(it.address) == key }
+    }
+
+    /** Package finder lookup by scanned code: the package and the stop it belongs to. */
+    fun findPackage(code: String): Pair<Pkg, Stop>? {
+        val key = code.trim().uppercase().replace(" ", "")
+        val p = packages.firstOrNull { it.id.trim().uppercase().replace(" ", "") == key } ?: return null
+        return indexOf(p.stopId)?.let { p to stops[it] }
+    }
+
     /** Appends a stop without re-planning (Circuit adds, then you optimize or update). */
     fun addStop(stop: Stop, newPackages: List<Pkg> = emptyList()) {
         val hadPending = stops.any { it.status == Status.PENDING }

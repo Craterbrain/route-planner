@@ -36,6 +36,13 @@ dependencies {
     implementation(project(":core"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.material)
+    // Label/barcode scanning: CameraX + ML Kit bundled models (offline, no Play services needed).
+    implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
+    implementation(libs.mlkit.barcode)
+    implementation(libs.mlkit.text)
     implementation(libs.valhalla.mobile)
     implementation(libs.valhalla.models)
     implementation(libs.valhalla.models.config)
