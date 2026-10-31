@@ -1,13 +1,18 @@
 [versions]
 agp = "8.8.2"
-kotlin = "2.1.10"
+kotlin = "2.3.0"
 coreKtx = "1.15.0"
 material = "1.12.0"
+valhalla = "0.6.4"
+valhallaModels = "0.6.0"
 junit = "4.13.2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
+valhalla-mobile = { group = "io.github.rallista", name = "valhalla-mobile", version.ref = "valhalla" }
+valhalla-models = { group = "io.github.rallista", name = "valhalla-models", version.ref = "valhallaModels" }
+valhalla-models-config = { group = "io.github.rallista", name = "valhalla-models-config", version.ref = "valhallaModels" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 
 [plugins]

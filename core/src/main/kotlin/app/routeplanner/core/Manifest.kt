@@ -45,9 +45,16 @@ private fun toSec(s: String): Long? =
  * Columns (header row required): address, lat, lng, package, zone, priority,
  * window_start, window_end, service_min, notes. Window times are HH:MM wall
  * clock, made route-relative by [dayStartSec]. Rows sharing an address merge
- * into one stop with several packages.
+ * into one stop with several packages. Rows without lat/lng are resolved with
+ * [geocoder] when given. A remembered drop-off in [memory] becomes the stop's
+ * access point.
  */
-fun importManifest(csv: String, dayStartSec: Long = 0): Manifest {
+fun importManifest(
+    csv: String,
+    dayStartSec: Long = 0,
+    geocoder: Geocoder? = null,
+    memory: AddressMemory? = null,
+): Manifest {
     val rows = parseCsv(csv)
     val header = rows.firstOrNull() ?: return Manifest(emptyList(), emptyList(), listOf("empty manifest"))
     val col = header.withIndex().associate { (i, h) -> h.trim().lowercase() to i }
@@ -57,20 +64,29 @@ fun importManifest(csv: String, dayStartSec: Long = 0): Manifest {
     for ((n, r) in rows.drop(1).withIndex()) {
         fun get(k: String) = col[k]?.let { r.getOrNull(it) }?.trim().orEmpty()
         val address = get("address")
-        val lat = get("lat").toDoubleOrNull()
-        val lng = get("lng").toDoubleOrNull()
         if (address.isEmpty()) { errors += "row ${n + 2}: missing address"; continue }
-        if (lat == null || lng == null) { errors += "row ${n + 2}: needs lat/lng (geocode first)"; continue }
-        val key = address.lowercase()
+        val key = normalizeAddress(address)
+        var lat = get("lat").toDoubleOrNull()
+        var lng = get("lng").toDoubleOrNull()
+        if ((lat == null || lng == null) && key !in stops) {
+            val hit = geocoder?.let { runCatching { it.geocode(address) }.getOrNull() }
+            if (hit == null) {
+                errors += "row ${n + 2}: no coordinates" + if (geocoder != null) " and geocoding failed" else " (needs lat/lng)"
+                continue
+            }
+            lat = hit.lat; lng = hit.lng
+        }
         val priority = TRUTHY.matches(get("priority"))
         val existing = stops[key]
         val stop = if (existing == null) {
             val ws = toSec(get("window_start"))
             val we = toSec(get("window_end"))
+            val target = LatLng(lat!!, lng!!)
             Stop(
                 id = UUID.randomUUID().toString(),
                 address = address,
-                target = LatLng(lat, lng),
+                target = target,
+                access = memory?.access(address) ?: target,
                 serviceSec = ((get("service_min").toDoubleOrNull() ?: 2.0) * 60).toInt(),
                 priority = priority,
                 window = if (ws != null && we != null) (ws - dayStartSec)..(we - dayStartSec) else null,

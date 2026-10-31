@@ -24,6 +24,9 @@ data class Stop(
     val etaSec: Int = 0,
     val lateSec: Int = 0,
     val completedAt: Long? = null,
+    /** Proof of delivery: free-text note and/or a photo file path. */
+    val proofNote: String? = null,
+    val proofPhoto: String? = null,
 )
 
 data class Pkg(

@@ -2,6 +2,11 @@ package app.routeplanner
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.speech.RecognizerIntent
+import android.text.InputType
+import android.widget.EditText
+import androidx.core.content.FileProvider
+import java.io.File
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -31,11 +36,18 @@ class MainActivity : Activity() {
     private lateinit var card: TextView
     private lateinit var list: LinearLayout
     private val refresh = { render() }
+    private lateinit var prefs: Prefs
+    private var proofNoteField: EditText? = null
+    private var addStopField: EditText? = null
+    private var pendingPhoto: File? = null
 
     companion object {
         const val ACTION_FAIL = "app.routeplanner.FAIL"
         private const val REQ_IMPORT = 1
         private const val REQ_LOCATION = 2
+        private const val REQ_TILES = 3
+        private const val REQ_VOICE = 4
+        private const val REQ_PHOTO = 5
         private val FAIL_LABELS = mapOf(
             FailReason.RECIPIENT_MISSING to "Recipient missing",
             FailReason.ACCESS_CODE_NEEDED to "Access code needed",
@@ -59,6 +71,7 @@ class MainActivity : Activity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         SessionStore.load(this)
+        prefs = Prefs(this)
 
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(16)) }
         // Edge-to-edge is enforced at targetSdk 35: keep content clear of system bars.
@@ -80,36 +93,41 @@ class MainActivity : Activity() {
         val bar = LinearLayout(this).apply { gravity = Gravity.CENTER }
         fun weighted(v: View) = bar.addView(v, LinearLayout.LayoutParams(0, dp(64), 1f))
         weighted(btn("◄ Prev", M.attr.materialButtonOutlinedStyle) { SessionStore.act(this) { prev(); null } })
-        weighted(btn("✓ Delivered") { SessionStore.act(this) { deliver() } })
+        weighted(btn("✓ Delivered") { SessionStore.act(this) { deliver() } }.also {
+            it.setOnLongClickListener { showProofDialog(); true } // long-press: proof of delivery
+        })
         weighted(btn("✗", M.attr.materialButtonOutlinedStyle) { showFailDialog() })
         weighted(btn("Next ►", M.attr.materialButtonOutlinedStyle) { SessionStore.act(this) { next(); null } })
 
         val tools = LinearLayout(this).apply { gravity = Gravity.CENTER }
         fun tool(v: View) = tools.addView(v, LinearLayout.LayoutParams(0, -2, 1f))
         tool(btn("Import CSV", M.attr.borderlessButtonStyle) { pickManifest() })
+        tool(btn("Add stop", M.attr.borderlessButtonStyle) { showAddStopDialog() })
         tool(btn("Navigate", M.attr.borderlessButtonStyle) { navigate() })
-        tool(btn("Bar overlay", M.attr.borderlessButtonStyle) { toggleOverlay() })
+        tool(btn("Bar", M.attr.borderlessButtonStyle) { toggleOverlay() })
+        tool(btn("⚙", M.attr.borderlessButtonStyle) { showSettings() })
 
-        val prefs = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        val prefsRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         val navToggle = btn("", M.attr.borderlessButtonStyle) { }
         navToggle.setOnClickListener {
             val s = SessionStore.session ?: return@setOnClickListener
             s.navApp = if (s.navApp == NavApp.GOOGLE) NavApp.WAZE else NavApp.GOOGLE
+            prefs.navApp = s.navApp
             SessionStore.commit(this)
         }
         navToggle.tag = "nav"
         val auto = MaterialSwitch(this).apply {
             text = "Auto-navigate"
             setOnCheckedChangeListener { v, on ->
-                if (v.isPressed) { SessionStore.session?.autoNavigate = on; SessionStore.commit(this@MainActivity) }
+                if (v.isPressed) { prefs.autoNavigate = on; SessionStore.session?.autoNavigate = on; SessionStore.commit(this@MainActivity) }
             }
             tag = "auto"
         }
-        prefs.addView(navToggle, LinearLayout.LayoutParams(0, -2, 1f))
-        prefs.addView(auto, LinearLayout.LayoutParams(0, -2, 1f))
+        prefsRow.addView(navToggle, LinearLayout.LayoutParams(0, -2, 1f))
+        prefsRow.addView(auto, LinearLayout.LayoutParams(0, -2, 1f))
 
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        root.addView(header); root.addView(cardView, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, dp(8), 0, dp(8)) }); root.addView(bar); root.addView(tools); root.addView(prefs)
+        root.addView(header); root.addView(cardView, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, dp(8), 0, dp(8)) }); root.addView(bar); root.addView(tools); root.addView(prefsRow)
         root.addView(ScrollView(this).apply { addView(list) }, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
         handleIntent(intent)
@@ -208,32 +226,146 @@ class MainActivity : Activity() {
     @Deprecated("fine for a single-activity app")
     override fun onActivityResult(req: Int, res: Int, data: Intent?) {
         super.onActivityResult(req, res, data)
-        val uri = data?.data ?: return
-        if (req != REQ_IMPORT || res != RESULT_OK) return
-        val text = contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: return
-        val m = importManifest(text, dayStartSec = 8 * 3600)
-        if (m.stops.isEmpty()) {
-            MaterialAlertDialogBuilder(this).setTitle("Nothing imported").setMessage(m.errors.joinToString("\n").ifEmpty { "No rows" }).show()
-            return
+        if (res != RESULT_OK) return
+        when (req) {
+            REQ_IMPORT -> data?.data?.let { importManifestFrom(it) }
+            REQ_TILES -> data?.data?.let { importTiles(it) }
+            REQ_VOICE -> data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+                ?.let { addStopField?.setText(it) }
+            REQ_PHOTO -> Toast.makeText(this, "Photo attached", Toast.LENGTH_SHORT).show()
         }
-        val route = Solver.optimize(startPoint(m.stops), m.stops, HaversineMatrix())
-        SessionStore.set(this, RouteSession(route.stops, m.packages))
-        val msg = "${route.stops.size} stops, ~${route.totalSec / 60} min" +
-            (if (route.lateStops > 0) ", ${route.lateStops} late" else "") +
-            (if (m.errors.isNotEmpty()) "\n\nSkipped:\n" + m.errors.joinToString("\n") else "")
-        MaterialAlertDialogBuilder(this).setTitle("Route planned").setMessage(msg).setPositiveButton("OK", null).show()
     }
 
-    /** Where the route starts: last known fix if permitted, else the stops' centroid. */
+    /** Runs [work] off the main thread, then [done] on it. */
+    private fun <T> background(work: () -> T, done: (Result<T>) -> Unit) {
+        Thread { val r = runCatching(work); runOnUiThread { done(r) } }.start()
+    }
+
+    private fun importManifestFrom(uri: Uri) {
+        val text = contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: return
+        val busy = MaterialAlertDialogBuilder(this).setTitle("Planning route…").setMessage("Geocoding and routing").setCancelable(false).show()
+        val start = startPoint(null)
+        background({
+            val m = importManifest(text, dayStartSec = 8 * 3600, geocoder = PlatformGeocoder(this), memory = prefs.addressMemory)
+            val src = Routing.source(this, prefs)
+            val origin = start ?: LatLng(m.stops.map { it.target.lat }.average(), m.stops.map { it.target.lng }.average())
+            Triple(m, if (m.stops.isEmpty()) null else Solver.optimize(origin, m.stops, src.provider), src)
+        }) { r ->
+            busy.dismiss()
+            val (m, route, src) = r.getOrElse {
+                MaterialAlertDialogBuilder(this).setTitle("Import failed").setMessage(it.message).setPositiveButton("OK", null).show(); return@background
+            }
+            if (route == null) {
+                MaterialAlertDialogBuilder(this).setTitle("Nothing imported").setMessage(m.errors.joinToString("\n").ifEmpty { "No rows" }).show()
+                return@background
+            }
+            SessionStore.set(this, RouteSession(route.stops, m.packages, prefs.navApp, prefs.autoNavigate))
+            val matrix = src.provider as? ValhallaMatrix
+            val msg = "${route.stops.size} stops, ~${route.totalSec / 60} min\nTimes: ${src.label}" +
+                (if (matrix?.degraded == true) " (some legs estimated)" else "") +
+                (if (route.lateStops > 0) "\n${route.lateStops} late" else "") +
+                (if (m.errors.isNotEmpty()) "\n\nSkipped:\n" + m.errors.joinToString("\n") else "")
+            MaterialAlertDialogBuilder(this).setTitle("Route planned").setMessage(msg).setPositiveButton("OK", null).show()
+        }
+    }
+
+    private fun importTiles(uri: Uri) {
+        val busy = MaterialAlertDialogBuilder(this).setTitle("Importing map data…").setCancelable(false).show()
+        background({
+            val tmp = File(filesDir, "valhalla_tiles.tar.part")
+            contentResolver.openInputStream(uri)!!.use { i -> tmp.outputStream().use { o -> i.copyTo(o) } }
+            check(tmp.renameTo(Routing.tilesFile(this)) || (Routing.tilesFile(this).delete() && tmp.renameTo(Routing.tilesFile(this))))
+            Routing.source(this, prefs).label
+        }) { r ->
+            busy.dismiss()
+            Toast.makeText(this, r.fold({ "Routing with $it" }, { "Import failed: ${it.message}" }), Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun showSettings() {
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(8), dp(24), 0) }
+        val tiles = Routing.tilesFile(this)
+        box.addView(text(14f).apply {
+            text = if (tiles.exists()) "Offline roads: ${tiles.length() / 1_000_000} MB map data installed"
+            else "Offline roads: no map data. Import a valhalla_tiles.tar built for your region."
+        })
+        box.addView(btn("Import map data (.tar)", M.attr.materialButtonOutlinedStyle) {
+            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), REQ_TILES)
+        })
+        box.addView(text(14f).apply { text = "\nOptional Valhalla server (used only without map data):" })
+        val url = EditText(this).apply {
+            hint = "http://192.168.1.10:8002"; setText(prefs.valhallaUrl)
+            inputType = InputType.TYPE_TEXT_VARIATION_URI
+        }
+        box.addView(url)
+        MaterialAlertDialogBuilder(this).setTitle("Settings").setView(box)
+            .setPositiveButton("Save") { _, _ -> prefs.valhallaUrl = url.text.toString() }
+            .setNegativeButton("Close", null).show()
+    }
+
+    private fun showAddStopDialog() {
+        val s = SessionStore.session ?: return
+        val box = LinearLayout(this).apply { setPadding(dp(24), dp(8), dp(24), 0); gravity = Gravity.CENTER_VERTICAL }
+        val field = EditText(this).apply { hint = "Address"; inputType = InputType.TYPE_TEXT_FLAG_CAP_WORDS }
+        addStopField = field
+        box.addView(field, LinearLayout.LayoutParams(0, -2, 1f))
+        box.addView(btn("🎤", M.attr.borderlessButtonStyle) {
+            runCatching {
+                startActivityForResult(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                    .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true), REQ_VOICE)
+            }.onFailure { Toast.makeText(this, "Voice input unavailable", Toast.LENGTH_SHORT).show() }
+        })
+        MaterialAlertDialogBuilder(this).setTitle("Add stop").setView(box)
+            .setPositiveButton("Add") { _, _ -> addStop(s, field.text.toString().trim()) }
+            .setNegativeButton("Cancel", null).show()
+    }
+
+    private fun addStop(s: RouteSession, address: String) {
+        if (address.isEmpty()) return
+        val here = startPoint(null) ?: s.current?.access ?: return
+        background({
+            val pin = prefs.addressMemory.access(address)
+            val door = PlatformGeocoder(this).geocode(address) ?: error("Couldn't find “$address”")
+            val stop = Stop(java.util.UUID.randomUUID().toString(), address, door, pin ?: door)
+            s.inject(stop, Routing.source(this, prefs).provider, here)
+        }) { r ->
+            SessionStore.commit(this)
+            r.onFailure { Toast.makeText(this, it.message, Toast.LENGTH_LONG).show() }
+        }
+    }
+
+    private fun showProofDialog() {
+        val c = SessionStore.session?.current ?: return
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(8), dp(24), 0) }
+        val note = EditText(this).apply { hint = "Note (e.g. left behind back porch pot)" }
+        proofNoteField = note
+        val photo = File(File(filesDir, "proof").apply { mkdirs() }, "${c.id}.jpg").also { pendingPhoto = it }
+        box.addView(note)
+        box.addView(btn("📷 Take photo", M.attr.materialButtonOutlinedStyle) {
+            val uri = FileProvider.getUriForFile(this, "$packageName.files", photo)
+            runCatching {
+                startActivityForResult(Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE)
+                    .putExtra(android.provider.MediaStore.EXTRA_OUTPUT, uri), REQ_PHOTO)
+            }.onFailure { Toast.makeText(this, "No camera app available", Toast.LENGTH_SHORT).show() }
+        })
+        MaterialAlertDialogBuilder(this).setTitle("Proof of delivery").setView(box)
+            .setPositiveButton("Delivered") { _, _ ->
+                val p = photo.takeIf { it.exists() && it.length() > 0 }?.absolutePath
+                SessionStore.act(this) { deliver(note.text.toString(), p) }
+            }
+            .setNegativeButton("Cancel", null).show()
+    }
+
+    /** Last known fix if permitted (asks once); null when unknown. */
     @SuppressLint("MissingPermission")
-    private fun startPoint(stops: List<Stop>): LatLng {
+    private fun startPoint(@Suppress("UNUSED_PARAMETER") unused: Nothing?): LatLng? {
         if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), REQ_LOCATION)
-        } else {
-            val lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-            lm.getProviders(true).mapNotNull { lm.getLastKnownLocation(it) }.maxByOrNull { it.time }
-                ?.let { return LatLng(it.latitude, it.longitude) }
+            return null
         }
-        return LatLng(stops.map { it.target.lat }.average(), stops.map { it.target.lng }.average())
+        val lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        return lm.getProviders(true).mapNotNull { lm.getLastKnownLocation(it) }.maxByOrNull { it.time }
+            ?.let { LatLng(it.latitude, it.longitude) }
     }
 }

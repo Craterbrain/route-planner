@@ -27,13 +27,15 @@ class RouteSession(
     /** Deep link for the current stop, aimed at the street access point. */
     fun link(stop: Stop? = current): String? = stop?.let { navLink(navApp, it.access) }
 
-    private fun set(i: Int, status: Status, reason: FailReason? = null) {
+    private fun set(i: Int, status: Status, reason: FailReason? = null, note: String? = null, photo: String? = null) {
         val s = stops[i]
         stops = stops.toMutableList().also {
             it[i] = s.copy(
                 status = status,
                 failReason = reason,
                 completedAt = if (status == Status.COMPLETED) now() else null,
+                proofNote = note?.takeIf { it.isNotBlank() },
+                proofPhoto = photo,
             )
         }
         packages = packages.map { if (it.stopId == s.id) it.copy(status = status) else it }
@@ -47,7 +49,11 @@ class RouteSession(
         return if (autoNavigate && !done) link() else null
     }
 
-    fun deliver(): String? { if (current == null) return null; set(cursor, Status.COMPLETED); return advance() }
+    fun deliver(note: String? = null, photo: String? = null): String? {
+        if (current == null) return null
+        set(cursor, Status.COMPLETED, note = note, photo = photo)
+        return advance()
+    }
     fun fail(reason: FailReason): String? { if (current == null) return null; set(cursor, Status.FAILED, reason); return advance() }
     fun skip(): String? { if (current == null) return null; set(cursor, Status.SKIPPED); return advance() }
 

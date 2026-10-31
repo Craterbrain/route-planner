@@ -80,6 +80,8 @@ object SessionStore {
                 .put("originalIndex", it.originalIndex).put("optimizedIndex", it.optimizedIndex)
                 .put("etaSec", it.etaSec).put("lateSec", it.lateSec)
                 .put("completedAt", it.completedAt ?: JSONObject.NULL)
+                .put("proofNote", it.proofNote ?: JSONObject.NULL)
+                .put("proofPhoto", it.proofPhoto ?: JSONObject.NULL)
         }))
         .put("packages", JSONArray(s.packages.map {
             JSONObject().put("id", it.id).put("stopId", it.stopId)
@@ -99,6 +101,8 @@ object SessionStore {
                     originalIndex = it.getInt("originalIndex"), optimizedIndex = it.getInt("optimizedIndex"),
                     etaSec = it.getInt("etaSec"), lateSec = it.getInt("lateSec"),
                     completedAt = if (it.isNull("completedAt")) null else it.getLong("completedAt"),
+                    proofNote = it.optString("proofNote").takeIf { n -> n.isNotEmpty() && !it.isNull("proofNote") },
+                    proofPhoto = it.optString("proofPhoto").takeIf { n -> n.isNotEmpty() && !it.isNull("proofPhoto") },
                 )
             }
         }

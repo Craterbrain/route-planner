@@ -5,14 +5,15 @@ plugins {
 
 android {
     namespace = "app.routeplanner"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "app.routeplanner"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
+        versionCode = 2
+        versionName = "0.2.0"
     }
 
     buildTypes {
@@ -25,13 +26,17 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
+}
+
+kotlin {
+    compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
 }
 
 dependencies {
     implementation(project(":core"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.material)
+    implementation(libs.valhalla.mobile)
+    implementation(libs.valhalla.models)
+    implementation(libs.valhalla.models.config)
 }
