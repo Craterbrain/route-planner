@@ -220,7 +220,7 @@ object Dialogs {
     )
 
     fun settings(ctx: Context, m: SettingsModel, openPermissions: () -> Unit, importAddresses: () -> Unit, manageRecents: () -> Unit,
-                 importRoads: () -> Unit, onSave: (SettingsModel) -> Unit) {
+                 importRoads: () -> Unit, openOfflineMaps: () -> Unit, onSave: (SettingsModel) -> Unit) {
         val box = ctx.vertical(padH = 24, padV = 8)
         box.addFull(ctx.button("Permissions & network…", M.attr.materialButtonOutlinedStyle) { openPermissions() }, bottomDp = 8)
         box.addFull(ctx.label(12f, M.attr.colorPrimary, bold = true).apply { text = "NAVIGATION" })
@@ -232,6 +232,7 @@ object Dialogs {
         box.addFull(ctx.label(12f, M.attr.colorPrimary, bold = true).apply { text = "MAP" }, topDp = 16)
         val map = MaterialSwitch(ctx).apply { text = "Show map"; isChecked = m.showMap }
         box.addFull(map)
+        box.addFull(ctx.button("Offline maps…", M.attr.materialButtonOutlinedStyle) { openOfflineMaps() }, topDp = 4, bottomDp = 4)
         box.addFull(ctx.label(13f, M.attr.colorOnSurfaceVariant).apply {
             text = "Map tiles: OpenFreeMap (© OpenMapTiles, © OpenStreetMap contributors). Needs a connection; areas you've viewed are cached. The stop list works without it."
         })
@@ -288,5 +289,32 @@ object Dialogs {
                 onSave(m)
             }
             .setNegativeButton("Close", null).show()
+    }
+}
+
+/** Offline map manager: saved maps with delete, plus a button that downloads the current route's area. */
+object OfflineMapsDialog {
+    fun show(ctx: Context, saved: List<app.routeplanner.OfflineMaps.Saved>, canDownload: Boolean,
+             onDownload: () -> Unit, onDelete: (app.routeplanner.OfflineMaps.Saved) -> Unit) {
+        val box = ctx.vertical(padH = 20, padV = 8)
+        box.addFull(ctx.label(13f, M.attr.colorOnSurfaceVariant).apply {
+            text = "Saves the map around your route so it loads without a connection. Each download is limited to 3,000 tiles (about 50 MB) per OpenFreeMap's terms; a large area gets a lower zoom."
+        }, bottomDp = 8)
+        if (saved.isEmpty()) box.addFull(ctx.label(14f).apply { text = "No offline maps saved." })
+        var dlg: androidx.appcompat.app.AlertDialog? = null
+        for (s in saved) {
+            val row = ctx.horizontal()
+            val texts = ctx.vertical()
+            texts.addFull(ctx.label(15f, bold = true, lines = 1).apply { text = s.name })
+            texts.addFull(ctx.label(12f, M.attr.colorOnSurfaceVariant).apply {
+                text = "%.1f MB".format(java.util.Locale.ROOT, s.bytes / 1_000_000.0) + if (s.complete) "" else " · incomplete"
+            })
+            row.addWeighted(texts)
+            row.addView(ctx.button("Delete", M.attr.borderlessButtonStyle) { dlg?.dismiss(); onDelete(s) })
+            box.addFull(row, topDp = 4)
+        }
+        val b = MaterialAlertDialogBuilder(ctx).setTitle("Offline maps").setView(box).setNegativeButton("Close", null)
+        if (canDownload) b.setPositiveButton("Download route area") { _, _ -> onDownload() }
+        dlg = b.show()
     }
 }

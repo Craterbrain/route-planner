@@ -741,6 +741,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
                 startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), REQ_ADDRESSES)
             },
             manageRecents = { manageRecents() },
+            openOfflineMaps = { showOfflineMaps() },
             importRoads = {
             startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), REQ_TILES)
         }) { m ->
@@ -752,6 +753,50 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
             SessionStore.session?.let { s -> s.navApp = prefs.navApp; s.autoNavigate = m.autoNavigate; SessionStore.commit(this) }
             if (m.showMap != prefs.showMap) { prefs.showMap = m.showMap; recreate() }
         }
+    }
+
+    // ---- Offline maps ----------------------------------------------------------
+
+    /** The area to save: everything the route touches, padded so the edges aren't the screen edge. */
+    private fun routeArea(): Bounds? {
+        val s = SessionStore.session
+        val pts = s?.stops?.map { it.target }.orEmpty() + listOfNotNull(currentStart()?.point, endAddress())
+        return Bounds.around(pts)?.padded(0.25, 0.02)
+    }
+
+    private fun showOfflineMaps() {
+        OfflineMaps.list(this) { saved ->
+            if (isFinishing || isDestroyed) return@list
+            OfflineMapsDialog.show(this, saved, canDownload = routeArea() != null,
+                onDownload = { confirmOfflineDownload() },
+                onDelete = { s -> Dialogs.confirm(this, "Delete \"${s.name}\"?", "The saved map is removed from this phone.", "Delete") {
+                    OfflineMaps.delete(s) { snack("Offline map deleted"); showOfflineMaps() }
+                } })
+        }
+    }
+
+    private fun confirmOfflineDownload() {
+        val area = routeArea() ?: run { snack("Set a starting point first so there's an area to save."); return }
+        val plan = OfflineMaps.plan(area)
+        val name = (currentStart()?.label?.let { splitAddress(it).first } ?: "Route area") + " area"
+        val msg = "About %.0f × %.0f km, zoom %d–%d, roughly %d tiles per style (light and dark). Needs a connection and stays on this phone."
+            .format(java.util.Locale.ROOT, plan.widthKm, plan.heightKm, plan.minZoom, plan.maxZoom, plan.tiles) +
+            if (plan.maxZoom < OfflineMaps.MAX_ZOOM) "\n\nThe area is large, so street-level detail is limited to zoom ${plan.maxZoom}." else ""
+        Dialogs.confirm(this, "Download offline map?", msg, "Download") { runOfflineDownload(name, plan) }
+    }
+
+    private fun runOfflineDownload(name: String, plan: OfflineMaps.Plan) {
+        val text = android.widget.TextView(this).apply { setPadding(dp(24), dp(8), dp(24), 0); text = "Starting…" }
+        var job: OfflineMaps.Job? = null
+        val dlg = MaterialAlertDialogBuilder(this).setTitle("Downloading map").setView(text).setCancelable(false)
+            .setNegativeButton("Cancel") { _, _ -> job?.cancel(); snack("Download cancelled") }.show()
+        job = OfflineMaps.download(this, name, plan,
+            onProgress = { p -> text.text = "${p.percent}% · ${p.text}" },
+            onDone = { r ->
+                if (dlg.isShowing && !isDestroyed) dlg.dismiss()
+                r.onSuccess { snack("Offline map saved: $name") }
+                    .onFailure { snack("Map download failed: ${it.message}") }
+            })
     }
 
     /** Settings → recent searches: remove one, or clear all. */
