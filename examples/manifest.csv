@@ -1,0 +1,7 @@
+address,lat,lng,package,zone,priority,window_start,window_end,service_min,notes
+"100 Main St, Springfield",39.7990,-89.6440,PKG-001,Shelf A,,,,2,
+"22 Oak Ave, Springfield",39.8100,-89.6300,PKG-002,Bin 3,yes,,,2,Ring bell
+"22 Oak Ave, Springfield",39.8100,-89.6300,PKG-003,Bin 3,,,,2,
+"9 Elm Rd, Springfield",39.7800,-89.6700,PKG-004,Trunk Left,,09:00,11:00,3,Business hours
+"57 Pine Ln, Springfield",39.8300,-89.6000,PKG-005,Shelf B,,,,2,
+"310 River Dr, Springfield",39.7700,-89.6100,PKG-006,Front Shelf,,10:00,12:00,2,

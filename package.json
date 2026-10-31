@@ -1,0 +1,10 @@
+{
+  "name": "route-planner",
+  "version": "0.1.0",
+  "description": "Delivery route optimization core: manifest import, VRPTW-lite solver, stop/package state machine, nav deep links.",
+  "type": "module",
+  "bin": { "route-planner": "src/cli.js" },
+  "scripts": { "test": "node --test test/" },
+  "license": "UNLICENSED",
+  "private": true
+}
