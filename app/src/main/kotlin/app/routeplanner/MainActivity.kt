@@ -274,7 +274,9 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
             menu.add(0, 7, 0, "Settings")
             if (s != null && s.stops.isNotEmpty()) menu.add(0, 13, 0, "Share route…")
             if (s != null && s.stops.any { it.status != Status.PENDING }) menu.add(0, 10, 0, "Export delivery report")
-            if (s != null) menu.add(0, 8, 0, "Clear route")
+            menu.add(0, 20, 0, "New route…")
+            if (s != null && s.stops.isNotEmpty()) menu.add(0, 21, 0, "Save route…")
+            menu.add(0, 22, 0, "Open route…")
             setOnMenuItemClickListener {
                 when (it.itemId) {
                     1 -> importCsv()
@@ -284,7 +286,9 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
                     5 -> map?.frameAll()
                     6 -> toggleOverlay()
                     7 -> showSettings()
-                    8 -> clearRoute()
+                    20 -> newRoute()
+                    21 -> saveRoute()
+                    22 -> openRoute()
                     9 -> showPermissions()
                     10 -> SessionStore.session?.let { ProofExport.share(this@MainActivity, it.stops, it.packages, ::snack) }
                     11 -> scanLabel()
@@ -488,11 +492,94 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(search, InputMethodManager.SHOW_IMPLICIT)
     }
 
-    override fun clearRoute() {
-        Dialogs.confirm(this, "Clear route?", "All stops and their status are removed from this phone. Proof photos stay in app storage.", "Clear") {
-            SessionStore.set(this, null)
-            OverlayService.stop(this)
+    // ---- Route library: New / Save / Open ---------------------------------------
+
+    /** The card's ⋮ menu. */
+    override fun routeMenu(anchor: android.view.View) {
+        val has = SessionStore.session?.stops?.isNotEmpty() == true
+        android.widget.PopupMenu(this, anchor).apply {
+            menu.add(0, 1, 0, "New route")
+            if (has) menu.add(0, 2, 0, "Save route")
+            menu.add(0, 3, 0, "Open route")
+            setOnMenuItemClickListener {
+                when (it.itemId) { 1 -> newRoute(); 2 -> saveRoute(); 3 -> openRoute() }
+                true
+            }
+        }.show()
+    }
+
+    /** Clears the route (and the floating button). */
+    private fun discardRoute() {
+        SessionStore.set(this, null)
+        OverlayService.stop(this)
+    }
+
+    /** New route: asks what to do with the one that is open. */
+    override fun newRoute() {
+        val s = SessionStore.session
+        if (s == null || s.stops.isEmpty()) { snack("The route is already empty"); return }
+        val done = s.stops.count { it.status != Status.PENDING }
+        MaterialAlertDialogBuilder(this).setTitle("Start a new route?")
+            .setMessage("The current route has ${s.stops.size} stop" + (if (s.stops.size == 1) "" else "s") + (if (done > 0) " ($done done)" else "") +
+                ". Save it first if you want to come back to it.")
+            .setPositiveButton("Save, then new") { _, _ -> saveRoute { discardRoute() } }
+            .setNegativeButton("Cancel", null)
+            .setNeutralButton("Discard it") { _, _ -> discardRoute() }
+            .show()
+    }
+
+    /** Save route: asks for a name; saving again under the same name updates the saved copy. */
+    private fun saveRoute(then: (() -> Unit)? = null) {
+        val s = SessionStore.session ?: return
+        val field = android.widget.EditText(this).apply {
+            hint = "Route name"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            setText(s.name ?: java.text.SimpleDateFormat("EEE MMM d, h:mm a", java.util.Locale.getDefault()).format(java.util.Date()))
+            setSelection(text.length)
         }
+        val box = android.widget.LinearLayout(this).apply { setPadding(dp(24), dp(8), dp(24), 0); addView(field, android.widget.LinearLayout.LayoutParams(-1, -2)) }
+        fun doSave(asNew: Boolean) {
+            val name = field.text.toString().trim().ifEmpty { "Route" }
+            val prepared = RouteLibrary.prepare(this, s, name, asNew)
+            actions.background({ prepared.write() }) { r ->
+                r.onSuccess { SessionStore.commit(this); snack("Saved “$name”"); then?.invoke() }
+                    .onFailure { snack("Couldn't save the route: ${it.message}") }
+            }
+        }
+        val b = MaterialAlertDialogBuilder(this).setTitle("Save route").setView(box)
+            .setPositiveButton(if (s.savedId != null) "Update" else "Save") { _, _ -> doSave(asNew = false) }
+            .setNegativeButton("Cancel", null)
+        if (s.savedId != null) b.setNeutralButton("Save as new") { _, _ -> doSave(asNew = true) }
+        b.show()
+    }
+
+    /** Open route: lists the saved routes; opening one replaces the current route. */
+    private fun openRoute() {
+        actions.background({ RouteLibrary.list(this) }) { r ->
+            if (isFinishing || isDestroyed) return@background
+            RouteLibraryDialog.show(this, r.getOrDefault(emptyList()),
+                onOpen = { e -> confirmOpen(e) },
+                onDelete = { e -> Dialogs.confirm(this, "Delete “${e.name}”?", "The saved copy is removed from this phone.", "Delete") {
+                    actions.background({ RouteLibrary.delete(this, e.id) }) { snack("Deleted “${e.name}”"); openRoute() }
+                } })
+        }
+    }
+
+    private fun confirmOpen(e: RouteLibrary.Entry) {
+        val current = SessionStore.session?.takeIf { it.stops.isNotEmpty() }
+        val go = {
+            actions.background({ RouteLibrary.load(this, e.id) }) { r ->
+                val loaded = r.getOrNull()
+                if (loaded == null) { snack("Couldn't open “${e.name}”"); return@background }
+                loaded.navApp = prefs.navApp; loaded.autoNavigate = prefs.autoNavigate
+                if (loaded.start == null) loaded.start = prefs.start
+                SessionStore.set(this, loaded)
+                actions.replan(optimize = false, showBusy = false) // times are relative to now
+                snack("Opened “${e.name}”")
+            }
+        }
+        if (current == null) go()
+        else Dialogs.confirm(this, "Open “${e.name}”?", "This replaces the route that is open now. Save that one first if you need it.", "Open") { go() }
     }
 
     override fun pickDropOff(stopId: String) {

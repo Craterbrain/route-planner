@@ -88,10 +88,12 @@ object SessionStore {
     private inline fun <reified E : Enum<E>> JSONObject.optEnum(k: String): E? =
         optStr(k)?.let { v -> enumValues<E>().firstOrNull { it.name == v } }
 
-    private fun encode(s: RouteSession) = JSONObject()
+    internal fun encode(s: RouteSession) = JSONObject()
         .put("version", 3)
         .put("navApp", s.navApp.name)
         .put("autoNavigate", s.autoNavigate)
+        .put("name", s.name ?: JSONObject.NULL)
+        .put("savedId", s.savedId ?: JSONObject.NULL)
         .put("cursor", s.cursor)
         .put("startMs", s.startMs)
         .put("started", s.started)
@@ -186,6 +188,8 @@ object SessionStore {
             )
             it.endLegSec = o.optInt("endLegSec", 0)
             it.endLegMeters = o.optInt("endLegMeters", 0)
+            it.name = o.optStr("name")
+            it.savedId = o.optStr("savedId")
             it.restoreCursor(o.optInt("cursor", 0))
         }
     }

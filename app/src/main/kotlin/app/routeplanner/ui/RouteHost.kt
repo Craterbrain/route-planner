@@ -17,7 +17,9 @@ interface RouteHost {
     fun next()
     fun importCsv()
     fun focusSearch()
-    fun clearRoute()
+    fun newRoute()
+    /** The card's three-dot menu: New route, Save route, Open route. */
+    fun routeMenu(anchor: android.view.View)
     fun pickDropOff(stopId: String)
     /** Start (depot) controls. */
     fun editStart()

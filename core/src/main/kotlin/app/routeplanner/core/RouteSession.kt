@@ -32,6 +32,10 @@ class RouteSession(
         if (this.stops.any { it.entryNo == 0 }) this.stops = this.stops.map { if (it.entryNo == 0) it.copy(entryNo = ++entrySeq) else it }
     }
 
+    /** Name this route was saved under, and the library entry it came from / was saved to (null = never saved). */
+    var name: String? = null
+    var savedId: String? = null
+
     /** Epoch millis of route-clock zero. */
     var startMs: Long = startMs ?: now()
 

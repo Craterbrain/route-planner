@@ -318,3 +318,37 @@ object OfflineMapsDialog {
         dlg = b.show()
     }
 }
+
+/** Saved routes: tap one to open it, Delete to remove it. */
+object RouteLibraryDialog {
+    fun show(ctx: Context, entries: List<app.routeplanner.RouteLibrary.Entry>, onOpen: (app.routeplanner.RouteLibrary.Entry) -> Unit,
+             onDelete: (app.routeplanner.RouteLibrary.Entry) -> Unit) {
+        val box = ctx.vertical(padH = 12, padV = 8)
+        if (entries.isEmpty()) box.addFull(ctx.label(14f, M.attr.colorOnSurfaceVariant).apply {
+            text = "No saved routes yet. Use Save route to keep the current one."
+            setPadding(ctx.dp(8), ctx.dp(8), ctx.dp(8), ctx.dp(8))
+        })
+        var dlg: androidx.appcompat.app.AlertDialog? = null
+        val fmt = java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT)
+        for (e in entries) {
+            val row = ctx.horizontal().apply {
+                setPadding(ctx.dp(8), ctx.dp(6), ctx.dp(0), ctx.dp(6))
+                isClickable = true; isFocusable = true
+                val tv = android.util.TypedValue()
+                if (ctx.theme.resolveAttribute(android.R.attr.selectableItemBackground, tv, true)) background = ctx.getDrawable(tv.resourceId)
+                setOnClickListener { dlg?.dismiss(); onOpen(e) }
+            }
+            val texts = ctx.vertical()
+            texts.addFull(ctx.label(16f, bold = true, lines = 1).apply { text = e.name })
+            texts.addFull(ctx.label(12f, M.attr.colorOnSurfaceVariant).apply {
+                text = "${e.stops} stop" + (if (e.stops == 1) "" else "s") + (if (e.delivered > 0) " · ${e.delivered} done" else "") +
+                    " · saved " + fmt.format(java.util.Date(e.savedAt))
+            })
+            row.addWeighted(texts)
+            row.addView(ctx.button("Delete", M.attr.borderlessButtonStyle) { dlg?.dismiss(); onDelete(e) })
+            box.addFull(row)
+        }
+        dlg = MaterialAlertDialogBuilder(ctx).setTitle("Open route").setView(android.widget.ScrollView(ctx).apply { addView(box) })
+            .setNegativeButton("Close", null).show()
+    }
+}

@@ -140,8 +140,18 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
 
     // ---- Headers -------------------------------------------------------------
 
+    /** A bold title with the route menu (⋮: New route, Save route, Open route) on the right. */
+    private fun titleRow(title: String, topDp: Int = 0, bottomDp: Int = 0) {
+        val row = ctx.horizontal()
+        row.addWeighted(ctx.label(22f, bold = true).apply { text = title })
+        val more = ctx.iconButton(R.drawable.ic_more_vert, "Route menu") {}
+        more.setOnClickListener { host.routeMenu(more) }
+        row.addView(more)
+        header.addFull(row, topDp = topDp, bottomDp = bottomDp)
+    }
+
     private fun emptyState() {
-        header.addFull(ctx.label(22f, bold = true).apply { text = "Plan your route" }, topDp = 4, bottomDp = 8)
+        titleRow("Plan your route", topDp = 4, bottomDp = 4)
         // Actions first, so they stay clear of the gesture bar when the sheet is collapsed.
         val row = ctx.horizontal()
         row.addWeighted(ctx.compact(ctx.button("Import spreadsheet", M.attr.materialButtonOutlinedStyle) { host.importCsv() }), marginDp = 4)
@@ -163,9 +173,7 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
     }
 
     private fun planningHeader(s: RouteSession, sum: RouteSummary) {
-        header.addFull(ctx.label(22f, bold = true).apply {
-            text = if (sum.total == 1) "1 stop" else "${sum.total} stops"
-        }, topDp = 0)
+        titleRow(if (sum.total == 1) "1 stop" else "${sum.total} stops")
         header.addFull(ctx.label(14f, M.attr.colorOnSurfaceVariant).apply { text = summaryLine(s, sum, remainingOnly = true) })
         if (sum.lateStops > 0) header.addFull(ctx.label(13f, M.attr.colorError).apply {
             text = "${sum.lateStops} ${if (sum.lateStops == 1) "stop" else "stops"} can't be reached on time"
@@ -255,7 +263,7 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
     }
 
     private fun finishedHeader(s: RouteSession, sum: RouteSummary) {
-        header.addFull(ctx.label(22f, bold = true).apply { text = "Route complete" })
+        titleRow("Route complete")
         header.addFull(ctx.label(14f, M.attr.colorOnSurfaceVariant).apply {
             text = listOfNotNull(
                 "${sum.delivered} delivered",
@@ -264,7 +272,7 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
             ).joinToString(" · ")
         })
         val row = ctx.horizontal()
-        row.addWeighted(ctx.compact(ctx.button("New route", M.attr.materialButtonOutlinedStyle) { host.clearRoute() }), marginDp = 4)
+        row.addWeighted(ctx.compact(ctx.button("New route", M.attr.materialButtonOutlinedStyle) { host.newRoute() }), marginDp = 4)
         row.addWeighted(ctx.compact(ctx.button("Import spreadsheet") { host.importCsv() }), marginDp = 4)
         header.addFull(row, topDp = 10, bottomDp = 8)
     }
