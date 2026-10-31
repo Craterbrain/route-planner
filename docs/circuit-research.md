@@ -63,6 +63,7 @@ Legend: **have** = existed before this work, **built** = added in this redesign,
 
 | Circuit feature | Status | Notes |
 |---|---|---|
+| Start / end location (Circuit: start + end address, "Roundtrip") | **built** | Required start: my location, address or map pin; end at last stop or back at start. End at a chosen address: core only (deferred UI). |
 | Map with numbered stop pins | **built** | MapLibre + OpenFreeMap. Pins use the same colors as the list badges: pending = primary, current = tertiary and larger, delivered = dimmed with ✓, failed = error with "!". |
 | Pins reflect status (dynamic markers) | **built** (partial) | Status colors and marks. No pickup, new or edited markers (no pickup type, no change preview). |
 | Address/ETA labels next to pins when zoomed | deferred | Only numbers are drawn. |

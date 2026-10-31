@@ -57,8 +57,16 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
     }
 
     /** Where address search should look first: the phone, else the route. Never prompts. */
-    fun searchBias(): LatLng? = lastLocation(ask = false)
+    fun searchBias(): LatLng? = (SessionStore.session?.start ?: prefs.start)?.point
+        ?: lastLocation(ask = false)
         ?: SessionStore.session?.stops?.takeIf { it.isNotEmpty() }?.let { centroid(it) }
+
+    /** A new route with the current start and end settings. */
+    fun newSession(stops: List<Stop>, pkgs: List<Pkg>, startMs: Long? = null) =
+        RouteSession(stops, pkgs, prefs.navApp, prefs.autoNavigate, startMs = startMs).also {
+            it.start = prefs.start
+            it.end = RouteEnd(prefs.endMode)
+        }
 
     fun addressSearch(): AddressSearch {
         val bias = searchBias()
@@ -68,10 +76,15 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
     private fun centroid(stops: List<Stop>) =
         LatLng(stops.map { it.access.lat }.average(), stops.map { it.access.lng }.average())
 
-    /** Where re-planning starts: GPS fix, else the last finished stop, else the middle of the route. */
-    private fun origin(s: RouteSession): LatLng? =
-        lastLocation() ?: s.stops.lastOrNull { it.status != Status.PENDING }?.access
+    /**
+     * Where planning starts: the route start before any stop is done; once
+     * under way the driver's position, else the last finished stop.
+     */
+    private fun origin(s: RouteSession): LatLng? {
+        val underway = s.started && s.stops.any { it.status != Status.PENDING }
+        return s.planOrigin(if (underway) lastLocation() else null)
             ?: s.stops.takeIf { it.isNotEmpty() }?.let { centroid(it) }
+    }
 
     /**
      * Re-plans the remaining stops: [optimize] = new order ("Optimize route"),
@@ -108,7 +121,7 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
     /** Imports a manifest CSV and optimizes it as a new (not yet started) route. */
     fun importCsv(uri: Uri) {
         val dlg = busy("Planning route…", "Geocoding and routing")
-        val start = lastLocation()
+        val start = prefs.start?.point ?: lastLocation()
         val search = addressSearch()
         background({
             val text = act.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
@@ -119,7 +132,8 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
                 geocoder = search.geocoder(), memory = prefs.addressMemory)
             val src = Routing.source(act, prefs)
             val origin = start ?: if (m.stops.isEmpty()) null else centroid(m.stops)
-            Triple(m, origin?.let { Solver.optimize(it, m.stops, src.provider) }, src) to nowMs
+            val end = when (prefs.endMode) { EndMode.ROUND_TRIP -> origin; else -> null }
+            Triple(m, origin?.let { Solver.optimize(it, m.stops, src.provider, end = end) }, src) to nowMs
         }) { r ->
             dlg.close()
             val (res, nowMs) = r.getOrElse { alert("Import failed", it.message ?: it.toString()); return@background }
@@ -129,7 +143,7 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
                 alert("Nothing imported", why + if (NetStatus.systemSaysOffline(act)) "\n\nNo network access, so addresses without lat,lng couldn't be looked up." else "")
                 return@background
             }
-            SessionStore.set(act, RouteSession(route.stops, m.packages, prefs.navApp, prefs.autoNavigate, startMs = nowMs))
+            SessionStore.set(act, newSession(route.stops, m.packages, startMs = nowMs).also { it.applyPlan(route) })
             val degraded = (src.provider as? ValhallaMatrix)?.degraded == true
             val msg = "${route.stops.size} stops, about ${formatDuration(route.totalSec)}\nTimes: ${src.label}" +
                 (if (degraded) " (some legs estimated)" else "") +
@@ -146,7 +160,7 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
         val stop = Stop(UUID.randomUUID().toString(), address, door, pin ?: door)
         val s = SessionStore.session
         if (s == null) {
-            SessionStore.set(act, RouteSession(listOf(stop.copy(optimizedIndex = 1)), emptyList(), prefs.navApp, prefs.autoNavigate))
+            SessionStore.set(act, newSession(listOf(stop.copy(optimizedIndex = 1)), emptyList()))
         } else {
             s.addStop(stop)
             SessionStore.commit(act)

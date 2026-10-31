@@ -19,4 +19,9 @@ interface RouteHost {
     fun focusSearch()
     fun clearRoute()
     fun pickDropOff(stopId: String)
+    /** Start (depot) controls. */
+    fun editStart()
+    fun useMyLocation()
+    fun searchStart()
+    fun pickStartOnMap()
 }

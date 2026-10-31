@@ -7,6 +7,8 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.NumberPicker
 import android.widget.ScrollView
+import app.routeplanner.R
+import app.routeplanner.core.EndMode
 import app.routeplanner.core.FailReason
 import com.google.android.material.R as M
 import com.google.android.material.button.MaterialButton
@@ -104,14 +106,36 @@ object Dialogs {
     }
 
     /** Long-press on the map: add a stop there, or move the current stop's drop-off pin there. */
-    fun mapPoint(ctx: Context, address: String?, currentStopLabel: String?, onAdd: (String) -> Unit, onDropOff: () -> Unit) {
-        val items = buildList {
-            add("Add a stop here")
-            if (currentStopLabel != null) add("Set drop-off for $currentStopLabel")
-        }
+    fun mapPoint(ctx: Context, address: String?, canAddStop: Boolean, currentStopLabel: String?,
+                 onStart: () -> Unit, onAdd: (String) -> Unit, onDropOff: () -> Unit) {
+        val items = mutableListOf<Pair<String, () -> Unit>>()
+        if (canAddStop) items += "Add a stop here" to { nameStop(ctx, address ?: "", onAdd) }
+        items += "Set as starting point" to onStart
+        if (currentStopLabel != null) items += "Set drop-off for $currentStopLabel" to onDropOff
         MaterialAlertDialogBuilder(ctx).setTitle(address ?: "Dropped pin")
-            .setItems(items.toTypedArray()) { _, i ->
-                if (i == 0) nameStop(ctx, address ?: "", onAdd) else onDropOff()
+            .setItems(items.map { it.first }.toTypedArray()) { _, i -> items[i].second() }
+            .setNegativeButton("Cancel", null).show()
+    }
+
+    /** Change the route start, and choose where the route ends. */
+    fun startOptions(ctx: Context, end: EndMode, onLocation: () -> Unit, onSearch: () -> Unit,
+                     onPick: (() -> Unit)?, onEnd: (EndMode) -> Unit) {
+        val box = ctx.vertical(padH = 20, padV = 8)
+        var dlg: androidx.appcompat.app.AlertDialog? = null
+        box.addFull(ctx.compact(ctx.button("Use my current location", icon = R.drawable.ic_navigation) { dlg?.dismiss(); onLocation() }))
+        box.addFull(ctx.compact(ctx.tonal(ctx.button("Search an address", icon = R.drawable.ic_search) { dlg?.dismiss(); onSearch() })), topDp = 4)
+        if (onPick != null) box.addFull(ctx.compact(ctx.button("Pick on the map", M.attr.materialButtonOutlinedStyle) { dlg?.dismiss(); onPick() }), topDp = 4)
+        box.addFull(ctx.label(12f, M.attr.colorPrimary, bold = true).apply { text = "ROUTE ENDS" }, topDp = 16, bottomDp = 4)
+        val labels = listOf("At last stop", "Back at start")
+        val group = toggleGroup(ctx, labels, if (end == EndMode.ROUND_TRIP) labels[1] else labels[0]).apply { isSelectionRequired = true }
+        box.addFull(group)
+        box.addFull(ctx.label(12f, M.attr.colorOnSurfaceVariant).apply {
+            text = "\"Back at start\" plans a round trip; the drive back counts toward the finish time and distance."
+        }, topDp = 4)
+        dlg = MaterialAlertDialogBuilder(ctx).setTitle("Starting point").setView(box)
+            .setPositiveButton("Done") { _, _ ->
+                val mode = if (group.value() == labels[1]) EndMode.ROUND_TRIP else EndMode.LAST_STOP
+                if (mode != end) onEnd(mode)
             }
             .setNegativeButton("Cancel", null).show()
     }

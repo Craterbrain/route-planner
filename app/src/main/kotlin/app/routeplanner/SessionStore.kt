@@ -77,13 +77,19 @@ object SessionStore {
         optStr(k)?.let { v -> enumValues<E>().firstOrNull { it.name == v } }
 
     private fun encode(s: RouteSession) = JSONObject()
-        .put("version", 2)
+        .put("version", 3)
         .put("navApp", s.navApp.name)
         .put("autoNavigate", s.autoNavigate)
         .put("cursor", s.cursor)
         .put("startMs", s.startMs)
         .put("started", s.started)
         .put("dirty", s.dirty)
+        .put("start", s.start?.toJson() ?: JSONObject.NULL)
+        .put("endMode", s.end.mode.name)
+        .put("endPoint", s.end.point?.json() ?: JSONObject.NULL)
+        .put("endLabel", s.end.label ?: JSONObject.NULL)
+        .put("endLegSec", s.endLegSec)
+        .put("endLegMeters", s.endLegMeters)
         .put("stops", JSONArray(s.stops.map {
             JSONObject()
                 .put("id", it.id).put("address", it.address)
@@ -151,6 +157,15 @@ object SessionStore {
             // Version-1 routes were always "in progress": keep showing the driving card.
             it.started = o.optBoolean("started", !o.has("version"))
             it.dirty = o.optBoolean("dirty", false)
+            // Version-2 routes and older have no start: the app fills it from Prefs.
+            it.start = o.optJSONObject("start")?.let { j -> runCatching { startFromJson(j) }.getOrNull() }
+            it.end = RouteEnd(
+                o.optEnum<EndMode>("endMode") ?: EndMode.LAST_STOP,
+                o.optJSONObject("endPoint")?.let { j -> LatLng(j.getDouble("lat"), j.getDouble("lng")) },
+                o.optStr("endLabel"),
+            )
+            it.endLegSec = o.optInt("endLegSec", 0)
+            it.endLegMeters = o.optInt("endLegMeters", 0)
             it.restoreCursor(o.optInt("cursor", 0))
         }
     }

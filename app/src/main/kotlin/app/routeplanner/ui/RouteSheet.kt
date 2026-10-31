@@ -31,6 +31,8 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
     val handle = BottomSheetDragHandleView(ctx)
     private val adapter = StopAdapter(ctx, host)
     val list = RecyclerView(ctx)
+    /** The route start, shown as the first row above the stops. */
+    private val startRow = ctx.vertical()
 
     init {
         val r = ctx.dpf(28f)
@@ -47,15 +49,21 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
         list.clipToPadding = false
         list.setPadding(ctx.dp(8), ctx.dp(4), ctx.dp(8), ctx.dp(8))
         adapter.touchHelper.attachToRecyclerView(list)
+        view.addView(startRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         view.addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
     }
 
     /** Bottom system-bar inset, so the last row isn't under the navigation bar. */
     fun setBottomInset(px: Int) = list.setPadding(ctx.dp(8), ctx.dp(4), ctx.dp(8), ctx.dp(8) + px)
 
-    fun render(s: RouteSession?) {
+    fun render(s: RouteSession?, start: RouteStart?, end: EndMode) {
         header.removeAllViews()
-        if (s == null || s.stops.isEmpty()) {
+        renderStartRow(start, end)
+        if (start == null) {
+            startCard()
+            // A route saved before starts existed still shows, below the card.
+            if (s == null || s.stops.isEmpty()) { if (!adapter.dragging) adapter.submit(emptyList()); return }
+        } else if (s == null || s.stops.isEmpty()) {
             emptyState()
             if (!adapter.dragging) adapter.submit(emptyList())
             return
@@ -69,12 +77,73 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
         if (!adapter.dragging) adapter.submit(rows(s, sum))
     }
 
+    // ---- Start -----------------------------------------------------------------
+
+    /** Gate: nothing can be planned until the route has a start. */
+    private fun startCard() {
+        val card = MaterialCardView(ctx).apply {
+            setCardBackgroundColor(ctx.color(M.attr.colorPrimaryContainer))
+            radius = ctx.dpf(24f); cardElevation = 0f; strokeWidth = 0
+        }
+        val body = ctx.vertical(padH = 16, padV = 14)
+        val on = M.attr.colorOnPrimaryContainer
+        body.addFull(ctx.label(22f, on, bold = true).apply { text = "Set your starting point" })
+        body.addFull(ctx.label(14f, on).apply {
+            text = "Routes are planned from here, and address search looks around it first."
+        }, topDp = 4, bottomDp = 10)
+        body.addFull(ctx.compact(ctx.button("Use my current location", icon = R.drawable.ic_navigation) { host.useMyLocation() }))
+        body.addFull(ctx.compact(ctx.tonal(ctx.button("Search an address", icon = R.drawable.ic_search) { host.searchStart() })), topDp = 4)
+        body.addFull(ctx.compact(ctx.button("Pick on the map", M.attr.materialButtonOutlinedStyle) { host.pickStartOnMap() }), topDp = 4)
+        card.addView(body)
+        header.addFull(card, bottomDp = 8)
+    }
+
+    private fun renderStartRow(start: RouteStart?, end: EndMode) {
+        startRow.removeAllViews()
+        if (start == null) return
+        val row = ctx.horizontal().apply {
+            setPadding(ctx.dp(20), ctx.dp(8), ctx.dp(12), ctx.dp(8))
+            isClickable = true
+            isFocusable = true
+            val tv = android.util.TypedValue()
+            if (ctx.theme.resolveAttribute(android.R.attr.selectableItemBackground, tv, true)) foreground = ctx.getDrawable(tv.resourceId)
+            setOnClickListener { host.editStart() }
+            contentDescription = "Route start: ${start.label}. Tap to change."
+        }
+        row.addView(ctx.label(14f, M.attr.colorOnSecondary, bold = true).apply {
+            text = "S"
+            gravity = Gravity.CENTER
+            background = ctx.roundRect(M.attr.colorSecondary, 8)
+        }, LinearLayout.LayoutParams(ctx.dp(34), ctx.dp(34)).apply { marginEnd = ctx.dp(12) })
+        val texts = ctx.vertical()
+        texts.addFull(ctx.label(15f, bold = true, lines = 1).apply {
+            text = if (start.live) "Start · My location" else "Start · ${splitAddress(start.label).first}"
+        })
+        texts.addFull(ctx.label(12f, M.attr.colorOnSurfaceVariant, lines = 2).apply {
+            val detail = if (start.live) listOfNotNull(
+                start.accuracyM?.let { "±${it.toInt()} m" },
+                start.fixAtMs?.let { "updated " + ago(it) },
+            ).joinToString(" · ").ifEmpty { "no fix yet" } else splitAddress(start.label).second
+            val ends = when (end) { EndMode.ROUND_TRIP -> "returns here"; EndMode.ADDRESS -> "ends at chosen address"; EndMode.LAST_STOP -> "ends at last stop" }
+            text = listOf(detail, ends).filter { it.isNotEmpty() }.joinToString(" · ")
+        })
+        row.addWeighted(texts)
+        if (start.live) row.addView(ctx.button("Refresh", M.attr.borderlessButtonStyle) { host.useMyLocation() })
+        else row.addView(ctx.button("Change", M.attr.borderlessButtonStyle) { host.editStart() })
+        startRow.addFull(row)
+    }
+
+    private fun ago(ms: Long): String {
+        val min = ((System.currentTimeMillis() - ms) / 60_000).toInt()
+        return when { min < 1 -> "just now"; min < 60 -> "$min min ago"; else -> "${min / 60} h ago" }
+    }
+
     // ---- Headers -------------------------------------------------------------
 
     private fun emptyState() {
         header.addFull(ctx.label(22f, bold = true).apply { text = "Plan your route" }, topDp = 4)
         header.addFull(ctx.label(14f, M.attr.colorOnSurfaceVariant).apply {
-            text = "Add stops with the search bar (type or speak), long-press the map to drop one, or import a spreadsheet of addresses."
+            text = "Add stops with the search bar (type or speak); results near your start come first. You can also long-press the map to drop one, or import a spreadsheet of addresses."
         }, topDp = 4, bottomDp = 12)
         val row = ctx.horizontal()
         row.addWeighted(ctx.compact(ctx.button("Import spreadsheet", M.attr.materialButtonOutlinedStyle) { host.importCsv() }), marginDp = 4)

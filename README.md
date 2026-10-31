@@ -26,6 +26,9 @@ Manifest CSV columns: `address,lat,lng,package,zone,priority,window_start,window
 
 ## The app (Circuit-style flow)
 
+- **Starting point first:** until the route has a start, the sheet shows a "Set your starting point" card: **Use my current location** (fresh fix from the platform `LocationManager`: GPS/network/fused, no Play services; accuracy and age shown, Refresh button), **Search an address** (the search bar switches to "Search your starting address"), or **Pick on the map** (tap, or long-press → "Set as starting point"). Import, Optimize and Start route redirect to the card until then. The start is a distinct "S" pin on the map and the first row above the stop list (tap to change it, or to choose **Route ends: at last stop / back at start**). It is saved as the default for new routes and inside the saved route.
+- **Depot:** optimizing, ETAs and the road-time matrix start from the route start (matrix index 0). Once you've finished a stop, re-planning starts from your current position (else the last finished stop). Round trips add the drive back to the finish time and distance.
+- **Search bias:** address search (search bar, CSV import) is biased to the start: the platform geocoder looks in a ~55 km box around it first, and Photon gets `lat`/`lon` with `zoom=10` and `location_bias_scale=0.1`.
 - **Route screen:** full-screen map with numbered stop pins (current stop larger, in the tertiary color; delivered dimmed with ✓; failed in red with !) and a dashed line through the remaining stops in order. Pins are drawn as bitmaps, so they show even when the basemap can't load (then the map is a plain themed background). A small **map status chip** under the search bar says what the map is doing ("loading basemap…", "style loaded · tiles ok", "no network access · pins only · tap to retry", "N tile errors"); MapLibre and network problems are also logged under the logcat tag `RoutePlanner`.
 - **Search bar:** suggestions appear under it as you type (400 ms debounce, 3+ characters, stale lookups dropped). Lookup chain: the phone's geocoder if it has one and it answers, else **Photon** (OpenStreetMap, no key; URL configurable in Settings). No results or no network say so ("No matches", "Couldn't reach address search", "No network access…"). The mic fills the bar by voice. The ⋮ menu has Import spreadsheet, Optimize, Update times, Reverse, Show whole route, Floating button (on/off), Permissions & network, Settings and Clear route. Long-press the map to drop a stop or move the current stop's drop-off pin.
 - **Floating button (overlay):** a round button over Google Maps / Waze; drag it (it snaps to the nearest edge, position remembered), tap to expand: current stop, ◄ (previous stop, set back to pending) ✓ Delivered ✗ Failed ► Next, Open app, Close. It collapses after Delivered/Failed/Open app, hides while Route Planner itself is on screen, and its notification has a Stop action.
@@ -59,6 +62,8 @@ Without network the route list, stop editing, delivery/proof, the floating butto
 
 ## Not yet verified on a device
 
+**0.5.0** adds the required route start and has not been run on hardware either. Check: the fresh location fix (accuracy, timeout fallback to last known, location switched off), the gating card, picking the start on the map, the S pin and start row, round trip totals, and that search results near the start come first.
+
 **0.4.0 status:** the 0.3.0 build ran on the user's phone (GrapheneOS-style, no Play services) and showed: no address suggestions, a blank beige map, the overlay bar over the app, a stuck "Undo" strip and a wrapped "Failed" button. 0.4.0 addresses each (see the commit log); **0.4.0 itself has not been run on hardware**.
 
 Blank map, best-supported cause: the beige was MapLibre's default "foreground load color", drawn over the whole MapView (attribution included) until the first frame renders. It never went away. The stop on screen has a full street address, which suggests it was added by long-press, so the map object probably existed but the style never finished loading. MapLibre feeds Android's `getActiveNetworkInfo().isConnected()` into its file source, and when that says "offline" it **waits silently** for connectivity rather than reporting an error. A per-app network block (GrapheneOS Network permission off, or a firewall/VPN app) produces exactly that. One possible route there: 0.2.0 didn't declare `INTERNET`, and GrapheneOS may not switch the Network toggle on automatically when an update adds it (unverified). The same block would also explain why address search got nothing. The style, sprite, glyphs and tiles all load fine from a desktop (checked with curl). 0.4.0 shows a status chip, falls back to pins on a plain background after 10 s, forces MapLibre online when our own HTTP probe succeeds, and has a Network row that tests reachability.
@@ -81,7 +86,7 @@ Check first:
 | Permission | Kind | Why |
 |---|---|---|
 | `INTERNET`, `ACCESS_NETWORK_STATE` | install-time | Map tiles, Photon search, optional Valhalla server; connectivity check. (On GrapheneOS the per-app "Network" toggle must also be on.) MapLibre also merges `ACCESS_WIFI_STATE`. |
-| `ACCESS_FINE_LOCATION` / `COARSE` | runtime | Route start point and search bias. |
+| `ACCESS_FINE_LOCATION` / `COARSE` | runtime | "Use my current location" as the route start (and search bias). Optional: you can search or pick the start instead. |
 | `POST_NOTIFICATIONS` | runtime (13+) | The floating button's foreground-service notification. |
 | `SYSTEM_ALERT_WINDOW` | special (Settings screen) | The floating button. |
 | `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_SPECIAL_USE` | install-time | Keeps the floating button alive. |
@@ -92,11 +97,12 @@ Check first:
 
 1. Run on a device; fix what breaks (nothing below has run on hardware yet).
 2. Build a tile extract for a home region and verify on-device matrix end to end.
-3. Offline map regions (MapLibre `OfflineManager`, within OpenFreeMap's download limits); address/ETA labels on pins.
-4. Barcode + label OCR (ML Kit bundled, CameraX).
-5. Signature capture; export proof of delivery.
-6. Room if history/queries outgrow SharedPreferences.
-7. Server + sync only if a multi-device need appears.
+3. End at a chosen address (core supports it; no UI yet). A no-key address source better than Photon (being researched).
+4. Offline map regions (MapLibre `OfflineManager`, within OpenFreeMap's download limits); address/ETA labels on pins.
+5. Barcode + label OCR (ML Kit bundled, CameraX).
+6. Signature capture; export proof of delivery.
+7. Room if history/queries outgrow SharedPreferences.
+8. Server + sync only if a multi-device need appears.
 
 ## Library choices
 

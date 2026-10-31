@@ -65,6 +65,10 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
     private var permissions: PermissionsSheet? = null
     /** User turned the floating button on but must grant "display over other apps" first. */
     private var overlayWanted = false
+    /** The search bar is choosing the route start rather than adding a stop. */
+    private var searchingStart = false
+    private lateinit var pickLabel: android.widget.TextView
+    private var locating = false
     private val refresh = { render() }
     private val netChanged = { map?.onNetworkChanged(); Unit }
 
@@ -76,12 +80,18 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         private const val REQ_TILES = 3
         private const val REQ_VOICE = 4
         private const val REQ_PHOTO = 5
+        private const val REQ_START_LOCATION = 8
     }
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         SessionStore.load(this)
         prefs = Prefs(this)
+        // Routes saved before starts existed (or a cleared Prefs): reconcile the two copies.
+        SessionStore.session?.let { s ->
+            if (s.start == null && prefs.start != null) { s.start = prefs.start; s.end = RouteEnd(prefs.endMode) }
+            else if (s.start != null && prefs.start == null) prefs.start = s.start
+        }
         actions = RouteActions(this, prefs, this)
 
         // Draw behind the system bars on every API level (targetSdk 35 forces it on Android 15).
@@ -95,7 +105,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         root = CoordinatorLayout(this).apply { setBackgroundColor(color(M.attr.colorSurface)) }
         val mapBox = FrameLayout(this)
         root.addView(mapBox, CoordinatorLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        if (prefs.showMap) map = RouteMap(this, mapBox, b, this) { actions.lastLocation(ask = false) }
+        if (prefs.showMap) map = RouteMap(this, mapBox, b, this) { currentStart()?.point ?: actions.lastLocation(ask = false) }
         else mapBox.addView(mapOffNotice(this), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
 
         topBar = buildTopBar()
@@ -113,7 +123,8 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         // Search suggestions float above the sheet, under the search bar.
         searchPanel = SearchPanel(this, search, { actions.addressSearch() }) { s, typed ->
             hideKeyboard()
-            actions.addStopAt(s.label, s.point, typed)
+            if (searchingStart || currentStart() == null) setStart(RouteStart(s.point, s.label))
+            else actions.addStopAt(s.label, s.point, typed)
         }
         root.addView(searchPanel.card, CoordinatorLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.TOP })
         snackAnchor = android.view.View(this)
@@ -208,7 +219,8 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
             visibility = android.view.View.GONE
         }
         val row = horizontal().apply { setPadding(dp(16), dp(4), dp(4), dp(4)) }
-        row.addWeighted(label(14f, M.attr.colorOnTertiaryContainer).apply { text = "Tap the map where you park or drop off" })
+        pickLabel = label(14f, M.attr.colorOnTertiaryContainer).apply { text = "Tap the map where you park or drop off" }
+        row.addWeighted(pickLabel)
         row.addView(button("Cancel", M.attr.borderlessButtonStyle) { endPick() })
         card.addView(row)
         return card
@@ -298,6 +310,14 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
     override fun onRequestPermissionsResult(req: Int, perms: Array<out String>, results: IntArray) {
         super.onRequestPermissionsResult(req, perms, results)
         permissions?.refresh()
+        if (req == REQ_START_LOCATION) {
+            if (LocationFix.hasPermission(this)) useMyLocation()
+            else MaterialAlertDialogBuilder(this).setTitle("Location not allowed")
+                .setMessage("Without location you can still search for your starting address or pick it on the map. To use your position later, allow Location in the permissions screen.")
+                .setPositiveButton("Permissions") { _, _ -> showPermissions() }
+                .setNeutralButton("Search address") { _, _ -> searchStart() }
+                .setNegativeButton("Close", null).show()
+        }
     }
     override fun onDestroy() { map?.onDestroy(); map = null; super.onDestroy() }
     override fun onLowMemory() { super.onLowMemory(); map?.onLowMemory() }
@@ -306,17 +326,22 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
     @Deprecated("Activity back handling; fine for a single-activity app")
     override fun onBackPressed() {
         when {
-            searchPanel.isShowing -> searchPanel.clear()
+            searchPanel.isShowing -> { searchPanel.clear(); searchingStart = false; render() }
             map?.pickingFor != null -> endPick()
             behavior.state == BottomSheetBehavior.STATE_EXPANDED && map != null -> behavior.state = BottomSheetBehavior.STATE_COLLAPSED
             else -> @Suppress("DEPRECATION") super.onBackPressed()
         }
     }
 
+    /** The route start: the open route's, else the saved default. */
+    private fun currentStart(): RouteStart? = SessionStore.session?.start ?: prefs.start
+
     private fun render() {
         val s = SessionStore.session
-        sheet.render(s)
-        map?.render(s, selectedId)
+        val start = currentStart()
+        sheet.render(s, start, s?.end?.mode ?: prefs.endMode)
+        map?.render(s, selectedId, start)
+        search.hint = if (searchingStart || start == null) "Search your starting address" else "Add a stop"
         val curId = s?.current?.id?.takeIf { s.started }
         if (s != null && curId != null && curId != lastCursorId) sheet.list.post { sheet.scrollToCurrent(s) }
         lastCursorId = curId
@@ -389,14 +414,16 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         if (s.moveStop(stopId, to)) { SessionStore.commit(this); update() }
     }
 
-    override fun optimize() = actions.replan(optimize = true, showBusy = true)
+    override fun optimize() { if (requireStart()) actions.replan(optimize = true, showBusy = true) }
     override fun update() = actions.replan(optimize = false, showBusy = false)
 
     override fun startRoute() {
+        if (!requireStart()) return
         val s = SessionStore.session ?: return
         s.start()
         SessionStore.commit(this)
-        update() // ETAs from now and from where the driver is
+        update() // ETAs from now
+        if (currentStart()?.live == true) refreshLiveStart()
         behavior.state = BottomSheetBehavior.STATE_COLLAPSED
     }
 
@@ -404,6 +431,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
     override fun next() = SessionStore.act(this) { next(); null }
 
     override fun importCsv() {
+        if (!requireStart()) return
         val s = SessionStore.session
         val launch = {
             startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -432,6 +460,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         val st = SessionStore.session?.stop(stopId) ?: return
         selectedId = stopId
         m.pickingFor = stopId
+        pickLabel.text = "Tap the map where you park or drop off"
         pickBanner.visibility = android.view.View.VISIBLE
         behavior.state = BottomSheetBehavior.STATE_COLLAPSED
         m.render(SessionStore.session, stopId)
@@ -447,9 +476,10 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
 
     // ---- RouteMap.Listener ---------------------------------------------------
 
-    override fun onStopTapped(id: String) = openStop(id)
+    override fun onStopTapped(id: String) = if (id == RouteMap.START_ID) editStart() else openStop(id)
 
     override fun onPointPicked(stopId: String, p: LatLng) {
+        if (stopId == RouteMap.START_ID) { endPick(); startAtPoint(p); return }
         val s = SessionStore.session
         val st = s?.setAccess(stopId, p)
         endPick()
@@ -469,10 +499,108 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
             val address = r.getOrNull()
             val s = SessionStore.session
             val cur = s?.current?.takeIf { s.started && it.status == Status.PENDING }
-            Dialogs.mapPoint(this, address, cur?.let { "stop ${it.optimizedIndex}" },
+            Dialogs.mapPoint(this, address, canAddStop = currentStart() != null, currentStopLabel = cur?.let { "stop ${it.optimizedIndex}" },
+                onStart = { setStart(RouteStart(p, address ?: droppedPin(p))) },
                 onAdd = { name -> actions.addStopAt(name, p) },
                 onDropOff = { cur?.let { onPointPicked(it.id, p) } })
         }
+    }
+
+    // ---- Route start -----------------------------------------------------------
+
+    /** Gate for planning actions: true when a start exists, else points the driver at the start card. */
+    private fun requireStart(): Boolean {
+        if (currentStart() != null) return true
+        behavior.state = BottomSheetBehavior.STATE_COLLAPSED
+        snack("Set your starting point first: use your location, search an address, or pick it on the map.")
+        return false
+    }
+
+    private fun droppedPin(p: LatLng) = "Dropped pin (%.5f, %.5f)".format(java.util.Locale.ROOT, p.lat, p.lng)
+
+    /** New start: saved as the default for future routes and applied to the open route (ETAs refresh). */
+    private fun setStart(start: RouteStart, quiet: Boolean = false) {
+        searchingStart = false
+        prefs.start = start
+        val s = SessionStore.session
+        if (s != null) {
+            s.start = start
+            SessionStore.commit(this)
+            if (s.stops.any { it.status == Status.PENDING }) update()
+        } else render()
+        if (!quiet) snack(if (start.live) "Starting from your location" + (start.accuracyM?.let { " (±${it.toInt()} m)" } ?: "")
+            else "Start: ${splitAddress(start.label).first}")
+    }
+
+    private fun startAtPoint(p: LatLng) {
+        val search = actions.addressSearch()
+        actions.background({ search.reverse(p) }) { r -> setStart(RouteStart(p, r.getOrNull() ?: droppedPin(p))) }
+    }
+
+    override fun editStart() {
+        Dialogs.startOptions(this, SessionStore.session?.end?.mode ?: prefs.endMode,
+            onLocation = { useMyLocation() },
+            onSearch = { searchStart() },
+            onPick = if (map != null) ({ pickStartOnMap() }) else null,
+            onEnd = { mode ->
+                prefs.endMode = mode
+                SessionStore.session?.let { s -> s.end = RouteEnd(mode); SessionStore.commit(this); update() } ?: render()
+            })
+    }
+
+    /** "Use my current location": fresh platform fix; explains and offers the permission flow when needed. */
+    override fun useMyLocation() {
+        if (!LocationFix.hasPermission(this)) {
+            MaterialAlertDialogBuilder(this).setTitle("Use your location?")
+                .setMessage("Route Planner uses your position as the route start and to find nearby addresses first. It is only read while the app is open.")
+                .setPositiveButton("Allow") { _, _ ->
+                    requestPermissions(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION), REQ_START_LOCATION)
+                }
+                .setNegativeButton("Not now", null).show()
+            return
+        }
+        if (locating) return
+        locating = true
+        snack("Getting your location…")
+        LocationFix.current(this) { fix, stale, error ->
+            locating = false
+            if (isFinishing || isDestroyed) return@current
+            if (fix == null) {
+                MaterialAlertDialogBuilder(this).setTitle("No location").setMessage(error ?: "No fix.")
+                    .setPositiveButton("Try again") { _, _ -> useMyLocation() }
+                    .setNeutralButton("Search address") { _, _ -> searchStart() }
+                    .setNegativeButton("Close", null).show()
+                return@current
+            }
+            setStart(RouteStart(fix.point, "My location", live = true, fixAtMs = fix.timeMs, accuracyM = fix.accuracyM), quiet = stale)
+            if (stale) snack("No fresh fix yet; using your last known position.", "Retry") { useMyLocation() }
+        }
+    }
+
+    /** Live start: refresh the fix silently (e.g. when the route starts). */
+    private fun refreshLiveStart() {
+        if (locating || !LocationFix.hasPermission(this)) return
+        locating = true
+        LocationFix.current(this) { fix, _, _ ->
+            locating = false
+            if (fix != null && currentStart()?.live == true && !isDestroyed)
+                setStart(RouteStart(fix.point, "My location", live = true, fixAtMs = fix.timeMs, accuracyM = fix.accuracyM), quiet = true)
+        }
+    }
+
+    override fun searchStart() {
+        searchingStart = true
+        render()
+        focusSearch()
+        snack("Type your starting address in the search bar")
+    }
+
+    override fun pickStartOnMap() {
+        val m = map ?: run { snack("The map is off (Settings). Use your location or search instead."); return }
+        m.pickingFor = RouteMap.START_ID
+        pickLabel.text = "Tap the map at your starting point"
+        pickBanner.visibility = android.view.View.VISIBLE
+        behavior.state = BottomSheetBehavior.STATE_COLLAPSED
     }
 
     // ---- Inputs --------------------------------------------------------------

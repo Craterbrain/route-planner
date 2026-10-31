@@ -10,7 +10,7 @@ import app.routeplanner.core.*
  * answers, otherwise Photon (OSM, online, no key; URL configurable in
  * Settings). All calls block; run them off the UI thread.
  */
-class AddressSearch(ctx: Context, prefs: Prefs, bias: () -> LatLng? = { null }) {
+class AddressSearch(ctx: Context, prefs: Prefs, private val bias: () -> LatLng? = { null }) {
     private val app = ctx.applicationContext
     private val platform = PlatformGeocoder(app)
     private val geocoderBase = prefs.geocoderUrl
@@ -25,7 +25,7 @@ class AddressSearch(ctx: Context, prefs: Prefs, bias: () -> LatLng? = { null }) 
     /** Suggestions for the search bar. */
     fun suggest(query: String, limit: Int = 5): Outcome {
         if (AndroidGeocoder.isPresent()) {
-            val hits = runCatching { platform.candidates(query, limit) }.getOrDefault(emptyList())
+            val hits = runCatching { platform.candidates(query, limit, bias()) }.getOrDefault(emptyList())
             if (hits.isNotEmpty()) return Outcome.Found(hits, "device geocoder")
         }
         if (query.trim().length < PhotonGeocoder.MIN_CHARS) return Outcome.Empty
@@ -44,8 +44,11 @@ class AddressSearch(ctx: Context, prefs: Prefs, bias: () -> LatLng? = { null }) 
         else -> "Couldn't reach address search."
     }
 
-    /** Geocoder for spreadsheet import: platform first, then Photon. */
-    fun geocoder(): Geocoder = ChainGeocoder(platform, photon)
+    /** Geocoder for spreadsheet import (biased to the start): platform first, then Photon. */
+    fun geocoder(): Geocoder = ChainGeocoder(
+        Geocoder { a -> runCatching { platform.candidates(a, 1, bias()) }.getOrNull()?.firstOrNull()?.point },
+        photon,
+    )
 
     /** Address at [p] for long-press, or null. */
     fun reverse(p: LatLng): String? =

@@ -41,6 +41,15 @@ class Prefs(ctx: Context) {
         get() = sp.getBoolean("setupShown", false)
         set(v) = sp.edit().putBoolean("setupShown", v).apply()
 
+    /** The route start (depot) used for new routes and for search bias; mirrored into the saved route. */
+    var start: RouteStart?
+        get() = sp.getString("start", null)?.let { runCatching { startFromJson(JSONObject(it)) }.getOrNull() }
+        set(v) = sp.edit().apply { if (v == null) remove("start") else putString("start", v.toJson().toString()) }.apply()
+
+    var endMode: EndMode
+        get() = runCatching { EndMode.valueOf(sp.getString("endMode", "")!!) }.getOrDefault(EndMode.LAST_STOP)
+        set(v) = sp.edit().putString("endMode", v.name).apply()
+
     /** Show the MapLibre map above the stop list (off = list only, no tile downloads). */
     var showMap: Boolean
         get() = sp.getBoolean("showMap", true)
@@ -67,9 +76,12 @@ class PlatformGeocoder(ctx: Context) : Geocoder {
 
     /** Up to [max] matches. Empty when the device has no geocoder. Blocking. */
     @Suppress("DEPRECATION")
-    fun candidates(address: String, max: Int = 5): List<Suggestion> =
+    fun candidates(address: String, max: Int = 5, near: LatLng? = null): List<Suggestion> =
         if (!AndroidGeocoder.isPresent()) emptyList()
-        else g.getFromLocationName(address, max).orEmpty().map { a ->
+        else (near?.let { c ->
+            // ~55 km box around the start first; anywhere if that finds nothing.
+            g.getFromLocationName(address, max, c.lat - 0.5, c.lng - 0.6, c.lat + 0.5, c.lng + 0.6).orEmpty().ifEmpty { null }
+        } ?: g.getFromLocationName(address, max).orEmpty()).map { a ->
             val line = (0..a.maxAddressLineIndex).joinToString(", ") { a.getAddressLine(it).orEmpty() }.ifBlank { address }
             val (l1, l2) = splitAddress(line)
             Suggestion(line, LatLng(a.latitude, a.longitude), l1, l2)
@@ -83,3 +95,15 @@ class PlatformGeocoder(ctx: Context) : Geocoder {
             (0..a.maxAddressLineIndex).joinToString(", ") { a.getAddressLine(it).orEmpty() }.ifBlank { null }
         }
 }
+
+fun RouteStart.toJson(): JSONObject = JSONObject()
+    .put("lat", point.lat).put("lng", point.lng).put("label", label).put("live", live)
+    .put("fixAtMs", fixAtMs ?: JSONObject.NULL).put("accuracyM", accuracyM?.toDouble() ?: JSONObject.NULL)
+
+fun startFromJson(o: JSONObject) = RouteStart(
+    LatLng(o.getDouble("lat"), o.getDouble("lng")),
+    o.optString("label", "Start"),
+    o.optBoolean("live", false),
+    if (o.isNull("fixAtMs")) null else o.optLong("fixAtMs"),
+    if (o.isNull("accuracyM")) null else o.optDouble("accuracyM").toFloat(),
+)

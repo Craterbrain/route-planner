@@ -19,6 +19,7 @@ import app.routeplanner.NetStatus
 import app.routeplanner.color
 import app.routeplanner.core.LatLng
 import app.routeplanner.core.RouteSession
+import app.routeplanner.core.RouteStart
 import app.routeplanner.core.Status
 import com.google.android.material.R as M
 import org.maplibre.android.MapLibre
@@ -111,7 +112,7 @@ class RouteMap(
 
     private enum class Basemap { LOADING, OK, FALLBACK }
 
-    private class Render(val s: RouteSession, val selectedId: String?)
+    private class Render(val s: RouteSession?, val selectedId: String?, val start: RouteStart?)
 
     init {
         installLogger()
@@ -360,11 +361,34 @@ class RouteMap(
         return bmp
     }
 
-    /** Redraws pins for [s]; [selectedId] shows that stop's drop-off pin (defaults to the current stop). */
-    fun render(s: RouteSession?, selectedId: String? = null) {
-        if (s == null) { last = null; clear(); return }
-        last = Render(s, selectedId)
+    /**
+     * Redraws pins for [s] plus the route [start] (a rounded-square "S" pin);
+     * [selectedId] shows that stop's drop-off pin (defaults to the current stop).
+     */
+    fun render(s: RouteSession?, selectedId: String? = null, start: RouteStart? = s?.start) {
+        if (s == null && start == null) { last = null; clear(); return }
+        last = Render(s, selectedId, start)
         if (style != null) draw(last!!)
+    }
+
+    /** Distinct start pin: rounded square in the secondary color. */
+    private fun startImage(): Bitmap {
+        val d = ctx.dpf(30f)
+        val bmp = Bitmap.createBitmap(d.toInt() + 2, d.toInt() + 2, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        val p = Paint(Paint.ANTI_ALIAS_FLAG)
+        val r = ctx.dpf(8f)
+        p.color = ctx.color(M.attr.colorSurface)
+        c.drawRoundRect(RectF(0f, 0f, bmp.width.toFloat(), bmp.height.toFloat()), r, r, p)
+        p.color = ctx.color(M.attr.colorSecondary)
+        val st = ctx.dpf(2f)
+        c.drawRoundRect(RectF(st, st, bmp.width - st, bmp.height - st), r, r, p)
+        p.color = ctx.color(M.attr.colorOnSecondary)
+        p.textAlign = Paint.Align.CENTER
+        p.isFakeBoldText = true
+        p.textSize = ctx.dpf(14f)
+        c.drawText("S", bmp.width / 2f, bmp.height / 2f - (p.descent() + p.ascent()) / 2, p)
+        return bmp
     }
 
     private fun clear() {
@@ -377,8 +401,17 @@ class RouteMap(
     private fun draw(r: Render) {
         val st = style ?: return
         val s = r.s
-        val cur = s.current?.takeIf { s.started }
-        val pins = s.stops.map { stop ->
+        val stops = s?.stops.orEmpty()
+        val cur = s?.current?.takeIf { s.started }
+        val startPin = r.start?.let { start ->
+            if (images.add(START_ICON)) st.addImage(START_ICON, startImage())
+            Feature.fromGeometry(Point.fromLngLat(start.point.lng, start.point.lat)).apply {
+                addStringProperty("id", START_ID)
+                addStringProperty("icon", START_ICON)
+                addNumberProperty("z", 4)
+            }
+        }
+        val pins = stops.map { stop ->
             val isCur = stop.id == cur?.id
             val c = ctx.badgeColors(stop, isCur)
             val text = badgeText(stop)
@@ -391,36 +424,41 @@ class RouteMap(
                 addNumberProperty("z", when { isCur -> 3; stop.status == Status.PENDING -> 2; else -> 1 })
             }
         }
-        st.getSourceAs<GeoJsonSource>(SRC_PINS)?.setGeoJson(FeatureCollection.fromFeatures(pins))
+        st.getSourceAs<GeoJsonSource>(SRC_PINS)?.setGeoJson(FeatureCollection.fromFeatures(pins + listOfNotNull(startPin)))
 
-        val remaining = s.stops.filter { it.status == Status.PENDING }.map { Point.fromLngLat(it.target.lng, it.target.lat) }
+        // Before any stop is done the line begins at the start (the depot).
+        val underway = stops.any { it.status != Status.PENDING }
+        val head = r.start?.takeIf { !underway }?.let { listOf(Point.fromLngLat(it.point.lng, it.point.lat)) }.orEmpty()
+        val remaining = head + stops.filter { it.status == Status.PENDING }.map { Point.fromLngLat(it.target.lng, it.target.lat) }
         st.getSourceAs<GeoJsonSource>(SRC_LINE)?.setGeoJson(
             if (remaining.size < 2) FeatureCollection.fromFeatures(emptyList())
             else FeatureCollection.fromFeature(Feature.fromGeometry(LineString.fromLngLats(remaining)))
         )
 
-        val sel = (r.selectedId?.let { s.stop(it) } ?: cur)?.takeIf { it.access != it.target || r.selectedId != null }
+        val sel = (r.selectedId?.let { s?.stop(it) } ?: cur)?.takeIf { it.access != it.target || r.selectedId != null }
         st.getSourceAs<GeoJsonSource>(SRC_ACCESS)?.setGeoJson(
             sel?.let { FeatureCollection.fromFeature(Feature.fromGeometry(Point.fromLngLat(it.access.lng, it.access.lat))) }
                 ?: FeatureCollection.fromFeatures(emptyList())
         )
 
         // Camera: frame the whole route once per route; then follow the current stop while driving.
-        val routeKey = s.stops.firstOrNull()?.id to s.stops.size
-        if (framedRoute != routeKey) { framedRoute = routeKey; focusedId = cur?.id; frameAll(s) }
+        val routeKey = Triple(stops.firstOrNull()?.id, stops.size, r.start?.point)
+        if (framedRoute != routeKey) { framedRoute = routeKey; focusedId = cur?.id; frameAll() }
         else if (cur != null && cur.id != focusedId) { focusedId = cur.id; focus(cur.target) }
     }
 
-    /** Fits every stop in the visible part of the map. */
-    fun frameAll(s: RouteSession? = last?.s) {
+    /** Fits every stop (and the start) in the visible part of the map. */
+    fun frameAll() {
         val m = map ?: return
-        val pts = s?.stops?.map { MapLatLng(it.target.lat, it.target.lng) }.orEmpty()
+        val r = last
+        val pts = r?.s?.stops?.map { MapLatLng(it.target.lat, it.target.lng) }.orEmpty() +
+            listOfNotNull(r?.start?.point?.let { MapLatLng(it.lat, it.lng) })
         if (pts.isEmpty()) { frameDefault(); return }
         val distinct = pts.distinct()
         if (distinct.size == 1) { m.easeCamera(CameraUpdateFactory.newLatLngZoom(distinct[0], 15.0)); return }
         val pad = ctx.dp(48)
         val h = container.height
-        if (h <= 0) { container.post { frameAll(s) }; return }
+        if (h <= 0) { container.post { frameAll() }; return }
         // Keep the padding sane on small views, or MapLibre can't fit the bounds.
         val top = (insetTop + pad).coerceAtMost(h / 3)
         val bottom = (insetBottom + pad).coerceAtMost(h / 2)
@@ -453,14 +491,17 @@ class RouteMap(
         view = null; map = null; style = null
     }
 
-    private companion object {
-        const val STYLE_TIMEOUT_MS = 10_000L
-        const val SRC_PINS = "rp-stops"
-        const val SRC_LINE = "rp-line"
-        const val SRC_ACCESS = "rp-access"
-        const val LAYER_PINS = "rp-stops-layer"
-        const val LAYER_LINE = "rp-line-layer"
-        const val LAYER_ACCESS = "rp-access-layer"
+    companion object {
+        /** Feature id of the start pin (tap → edit start). */
+        const val START_ID = "__start__"
+        private const val STYLE_TIMEOUT_MS = 10_000L
+        private const val START_ICON = "rp-start"
+        private const val SRC_PINS = "rp-stops"
+        private const val SRC_LINE = "rp-line"
+        private const val SRC_ACCESS = "rp-access"
+        private const val LAYER_PINS = "rp-stops-layer"
+        private const val LAYER_LINE = "rp-line-layer"
+        private const val LAYER_ACCESS = "rp-access-layer"
     }
 }
 
