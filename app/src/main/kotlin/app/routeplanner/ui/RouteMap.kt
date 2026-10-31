@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.os.Bundle
@@ -33,6 +34,7 @@ import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.layers.CircleLayer
+import org.maplibre.android.style.layers.FillLayer
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.PropertyFactory as P
 import org.maplibre.android.style.layers.SymbolLayer
@@ -265,11 +267,38 @@ class RouteMap(
             if (basemap != Basemap.LOADING) return@setStyle // fallback already took over
             main.removeCallbacks(styleTimeout)
             basemap = Basemap.OK
+            if (url == NetStatus.MAP_STYLE_DARK) boostDarkContrast(s)
             onStyle(s)
             // A style from cache with no reachable tiles never finishes a frame: fall back so pins show.
             main.removeCallbacks(frameTimeout)
             main.postDelayed(frameTimeout, STYLE_TIMEOUT_MS)
         }
+    }
+
+    /**
+     * OpenFreeMap's "dark" style draws roads at #181818 on a #0c0c0c background and labels at 37-40% grey, which is
+     * close to unreadable outdoors. Lift the road, building, water, park and label colors (layer ids from the
+     * published style; a missing id is skipped, so a style update can't break this).
+     */
+    private fun boostDarkContrast(s: Style) {
+        fun line(id: String, color: String) { s.getLayerAs<LineLayer>(id)?.setProperties(P.lineColor(Color.parseColor(color))) }
+        fun fill(id: String, color: String) { s.getLayerAs<FillLayer>(id)?.setProperties(P.fillColor(Color.parseColor(color))) }
+        fun text(id: String, color: String, halo: Float = 1.6f) {
+            s.getLayerAs<SymbolLayer>(id)?.setProperties(
+                P.textColor(Color.parseColor(color)), P.textHaloColor(Color.parseColor("#0a0a0a")), P.textHaloWidth(halo))
+        }
+        fill("water", "#18283a"); line("waterway", "#18283a")
+        fill("landuse_park", "#1a2a1d"); fill("landcover_wood", "#1a2a1d")
+        fill("building", "#2e2e32")
+        line("highway_path", "#5a5a5a"); line("highway_minor", "#6a6a6a")
+        line("highway_major_casing", "#262626"); line("highway_major_inner", "#8a8a8a"); line("highway_major_subtle", "#6a6a6a")
+        line("highway_motorway_casing", "#262626"); line("highway_motorway_inner", "#b0b0b0"); line("highway_motorway_subtle", "#6a6a6a")
+        line("railway", "#707070"); line("railway_minor", "#707070"); line("railway_transit", "#707070")
+        line("boundary_state", "#6a6a6a")
+        text("highway_name_other", "#d8d8d8"); text("highway_name_motorway", "#ececec")
+        for (id in listOf("place_other", "place_suburb", "place_village", "place_town", "place_city", "place_city_large",
+            "place_state", "place_country_other", "place_country_minor", "place_country_major")) text(id, "#e6e6e6", 1.8f)
+        text("water_name", "#9fb7d0")
     }
 
     private val frameTimeout = Runnable {

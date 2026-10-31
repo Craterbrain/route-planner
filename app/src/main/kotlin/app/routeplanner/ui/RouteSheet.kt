@@ -141,14 +141,15 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
     // ---- Headers -------------------------------------------------------------
 
     private fun emptyState() {
-        header.addFull(ctx.label(22f, bold = true).apply { text = "Plan your route" }, topDp = 4)
-        header.addFull(ctx.label(14f, M.attr.colorOnSurfaceVariant).apply {
-            text = "Add stops with the search bar (type or speak); results near your start come first. You can also long-press the map to drop one, or import a spreadsheet of addresses."
-        }, topDp = 4, bottomDp = 12)
+        header.addFull(ctx.label(22f, bold = true).apply { text = "Plan your route" }, topDp = 4, bottomDp = 8)
+        // Actions first, so they stay clear of the gesture bar when the sheet is collapsed.
         val row = ctx.horizontal()
         row.addWeighted(ctx.compact(ctx.button("Import spreadsheet", M.attr.materialButtonOutlinedStyle) { host.importCsv() }), marginDp = 4)
         row.addWeighted(ctx.compact(ctx.button("Add stop", icon = R.drawable.ic_add) { host.focusSearch() }), marginDp = 4)
-        header.addFull(row, bottomDp = 12)
+        header.addFull(row, bottomDp = 8)
+        header.addFull(ctx.label(14f, M.attr.colorOnSurfaceVariant).apply {
+            text = "Add stops with the search bar (type, speak or scan a label); results near your start come first. You can also long-press the map to drop one, or import a spreadsheet of addresses."
+        }, bottomDp = 12)
     }
 
     private fun summaryLine(s: RouteSession, sum: RouteSummary, remainingOnly: Boolean): String {

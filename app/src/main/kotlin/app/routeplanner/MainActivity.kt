@@ -212,6 +212,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
             }
         }
         row.addWeighted(search)
+        row.addView(iconButton(R.drawable.ic_scan, "Scan a shipping label") { scanLabel() })
         row.addView(iconButton(R.drawable.ic_mic, "Add stop by voice") { startVoice() })
         val more = iconButton(R.drawable.ic_more_vert, "More options") {}
         more.setOnClickListener { showMenu(more) }
@@ -286,7 +287,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
                     8 -> clearRoute()
                     9 -> showPermissions()
                     10 -> exportReport()
-                    11 -> if (requireStart()) startActivityForResult(Intent(this@MainActivity, ScanActivity::class.java).putExtra(ScanActivity.EXTRA_MODE, ScanActivity.MODE_LABEL), REQ_SCAN_LABEL)
+                    11 -> scanLabel()
                     12 -> startActivityForResult(Intent(this@MainActivity, ScanActivity::class.java).putExtra(ScanActivity.EXTRA_MODE, ScanActivity.MODE_FIND), REQ_SCAN_FIND)
                 }
                 true
@@ -661,6 +662,12 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
     }
 
     // ---- Inputs --------------------------------------------------------------
+
+    /** Search bar camera button / ⋮ → Scan label. */
+    private fun scanLabel() {
+        if (!requireStart()) return
+        startActivityForResult(Intent(this, ScanActivity::class.java).putExtra(ScanActivity.EXTRA_MODE, ScanActivity.MODE_LABEL), REQ_SCAN_LABEL)
+    }
 
     private fun startVoice() {
         runCatching {
