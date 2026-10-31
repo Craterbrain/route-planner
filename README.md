@@ -138,6 +138,8 @@ Check first:
 
 ## Roadmap
 
+A frame-by-frame comparison with the real Circuit/Spoke app (from tutorial videos and its App Store screenshots) is in [docs/circuit-walkthrough-and-gaps.md](docs/circuit-walkthrough-and-gaps.md); its "suggested order" is the working list.
+
 1. Run on a device; fix what breaks (nothing since 0.3.0 has run on hardware).
 2. Build a tile extract for a home region and verify on-device matrix end to end (done for Tennessee; the phone hasn't loaded it).
 3. Street-centerline snapping for street-level address hits; address packs for more states.
