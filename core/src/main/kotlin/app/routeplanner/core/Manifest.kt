@@ -35,7 +35,14 @@ fun parseCsv(text: String): List<List<String>> {
 
 class Manifest(val stops: List<Stop>, val packages: List<Pkg>, val errors: List<String>)
 
-private val TRUTHY = Regex("^(1|true|yes|y)$", RegexOption.IGNORE_CASE)
+private val TRUTHY = Regex("^(1|true|yes|y|first)$", RegexOption.IGNORE_CASE)
+
+/** `priority` column: yes/true/1/first = visit first, "last" = visit last, else optimizer decides. */
+fun parsePlacement(v: String): Placement = when {
+    TRUTHY.matches(v.trim()) -> Placement.FIRST
+    v.trim().equals("last", ignoreCase = true) -> Placement.LAST
+    else -> Placement.AUTO
+}
 private val HHMM = Regex("^(\\d{1,2}):(\\d{2})$")
 
 private fun toSec(s: String): Long? =
@@ -45,7 +52,7 @@ private fun toSec(s: String): Long? =
  * Columns (header row required): address, lat, lng, package, zone, priority,
  * window_start, window_end, service_min, notes. Window times are HH:MM wall
  * clock, made route-relative by [dayStartSec]. Rows sharing an address merge
- * into one stop with several packages. Rows without lat/lng are resolved with
+ * into one stop with several packages. `priority` may be yes/first or last. Rows without lat/lng are resolved with
  * [geocoder] when given. A remembered drop-off in [memory] becomes the stop's
  * access point.
  */
@@ -76,7 +83,7 @@ fun importManifest(
             }
             lat = hit.lat; lng = hit.lng
         }
-        val priority = TRUTHY.matches(get("priority"))
+        val placement = parsePlacement(get("priority"))
         val existing = stops[key]
         val stop = if (existing == null) {
             val ws = toSec(get("window_start"))
@@ -88,11 +95,11 @@ fun importManifest(
                 target = target,
                 access = memory?.access(address) ?: target,
                 serviceSec = ((get("service_min").toDoubleOrNull() ?: 2.0) * 60).toInt(),
-                priority = priority,
+                placement = placement,
                 window = if (ws != null && we != null) (ws - dayStartSec)..(we - dayStartSec) else null,
                 notes = get("notes"),
             ).also { stops[key] = it }
-        } else if (priority && !existing.priority) existing.copy(priority = true).also { stops[key] = it }
+        } else if (placement != Placement.AUTO && existing.placement == Placement.AUTO) existing.copy(placement = placement).also { stops[key] = it }
         else existing
         packages += Pkg(get("package").ifEmpty { UUID.randomUUID().toString() }, stop.id, get("zone").ifEmpty { null })
     }
