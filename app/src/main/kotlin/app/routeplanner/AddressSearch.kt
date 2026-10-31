@@ -101,6 +101,29 @@ class AddressSearch(ctx: Context, private val prefs: Prefs, private val bias: ()
         off
     }
 
+    /**
+     * Confirms a full address (a scanned label, say) before it is added without asking: Google's rows first,
+     * then the phone's geocoder (Google-backed with Play services), then the offline pack's exact hit. A result
+     * counts only if [AddressMatch] says it is the same house number and street (and ZIP, when both have one).
+     * Null when nothing agrees, so the caller can hand the text to the search bar instead. Blocking.
+     */
+    fun validate(address: String): Suggestion? {
+        val near = bias()
+        val g0 = google
+        if (g0 != null && !googleBreaker.isOpen()) {
+            val rows = runCatching { g0.suggest(address, near, 5).also { googleBreaker.success() } }
+                .onFailure { googleBreaker.failure() }.getOrNull().orEmpty()
+            SuggestRanker.rank(address, rows, near).firstOrNull { AddressMatch.matches(address, it) }?.let { return it }
+        }
+        if (AndroidGeocoder.isPresent()) {
+            runCatching { platform.candidates(address, 3, near) }.getOrNull().orEmpty()
+                .firstOrNull { AddressMatch.matches(address, it) }
+                ?.let { return it.copy(approximate = AddressText.approximateFor(address, it.title)) }
+        }
+        return runCatching { offline.suggest(address, near, 3) }.getOrNull().orEmpty()
+            .firstOrNull { !it.approximate && AddressMatch.matches(address, it) }
+    }
+
     /** Address at [p] for long-press, or null. */
     fun reverse(p: LatLng): String? =
         platform.reverse(p) ?: runCatching { photon.reverse(p)?.label }.getOrNull()

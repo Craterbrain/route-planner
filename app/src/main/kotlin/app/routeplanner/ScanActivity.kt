@@ -28,7 +28,6 @@ import app.routeplanner.ui.compact
 import app.routeplanner.ui.dp
 import app.routeplanner.ui.label
 import app.routeplanner.ui.roundRect
-import app.routeplanner.ui.tonal
 import app.routeplanner.ui.vertical
 import com.google.android.material.R as M
 import com.google.mlkit.vision.barcode.BarcodeScanning
@@ -39,22 +38,24 @@ import java.util.concurrent.Executors
 
 /**
  * Camera screen for two jobs, chosen by [EXTRA_MODE]:
- *  - [MODE_LABEL]: read a shipping label. Address(es) and tracking numbers found in the live view are
- *    listed; tap one to return it (an address to add as a stop, with any tracking number as its package).
+ *  - [MODE_LABEL]: read a shipping label's text. The delivery address (the bigger print, or the one after
+ *    "SHIP TO") is offered first, a return address second; barcodes and tracking numbers are ignored.
+ *    Tapping an address returns it to the caller, which confirms it and adds the stop.
  *  - [MODE_FIND]: scan a package barcode and return it at once (to look up its stop and truck location).
- * Both ML Kit recognizers are the bundled models, so scanning works offline.
+ * The ML Kit models are the bundled ones, so scanning works offline.
  */
 class ScanActivity : AppCompatActivity() {
     private val analysisExecutor = Executors.newSingleThreadExecutor()
-    private val barcodes = BarcodeScanning.getClient()
-    private val text = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+    // Only the recognizer the mode needs is ever created.
+    private val barcodes by lazy { BarcodeScanning.getClient() }
+    private val text by lazy { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
     private lateinit var results: LinearLayout
     private lateinit var hint: android.widget.TextView
     private lateinit var mode: String
 
-    // What the last few seconds of frames contained (key -> last seen ms), so the list doesn't flicker.
-    private val addresses = LinkedHashMap<String, Long>()
-    private val codes = LinkedHashMap<String, Long>()
+    // The ranked addresses from the latest useful frame, and when they were seen (so the list doesn't flicker).
+    private var ranked: List<LabelParser.Candidate> = emptyList()
+    private var rankedAt = 0L
     private var lastRun = 0L
     private var shownKey = ""
     private var finished = false
@@ -135,62 +136,57 @@ class ScanActivity : AppCompatActivity() {
         if (media == null || finished || now - lastRun < 350) { proxy.close(); return }
         lastRun = now
         val image = InputImage.fromMediaImage(media, proxy.imageInfo.rotationDegrees)
-        val pending = java.util.concurrent.atomic.AtomicInteger(if (mode == MODE_FIND) 1 else 2)
-        fun done() { if (pending.decrementAndGet() == 0) proxy.close() }
-        barcodes.process(image)
-            .addOnSuccessListener { list ->
-                val found = list.mapNotNull { it.rawValue?.trim()?.takeIf { v -> v.isNotEmpty() } }
-                if (found.isNotEmpty()) runOnUiThread { onCodes(found) }
-            }
-            .addOnCompleteListener { done() }
-        if (mode == MODE_LABEL) {
+        if (mode == MODE_FIND) {
+            barcodes.process(image)
+                .addOnSuccessListener { list ->
+                    list.firstNotNullOfOrNull { it.rawValue?.trim()?.takeIf { v -> v.isNotEmpty() } }
+                        ?.let { code -> runOnUiThread { finishWith(code = code) } }
+                }
+                .addOnCompleteListener { proxy.close() }
+        } else {
             text.process(image)
-                .addOnSuccessListener { t -> if (t.text.isNotBlank()) runOnUiThread { onText(t.text) } }
-                .addOnCompleteListener { done() }
+                .addOnSuccessListener { t ->
+                    // Lines in reading order, each with its printed height (the bigger address is the recipient's).
+                    val lines = t.textBlocks.sortedBy { it.boundingBox?.top ?: 0 }.flatMap { it.lines }
+                        .map { LabelParser.OcrLine(it.text, (it.boundingBox?.height() ?: 0).toFloat()) }
+                    if (lines.isNotEmpty()) runOnUiThread { onLines(lines) }
+                }
+                .addOnCompleteListener { proxy.close() }
         }
     }
 
-    private fun onCodes(found: List<String>) {
+    private fun onLines(lines: List<LabelParser.OcrLine>) {
         if (finished) return
-        if (mode == MODE_FIND) { finishWith(code = found.first()); return }
+        val found = LabelParser.parse(lines).candidates
         val now = System.currentTimeMillis()
-        found.forEach { codes[it] = now }
-        renderResults()
-    }
-
-    private fun onText(raw: String) {
-        if (finished) return
-        val now = System.currentTimeMillis()
-        val parsed = LabelParser.parse(raw)
-        parsed.addresses.forEach { addresses[it] = now }
-        // A tracking number in the text counts like a scanned one.
-        parsed.tracking.forEach { codes[it] = now }
+        // A frame that sees fewer addresses than we already hold (say, only the return address) doesn't
+        // replace the better-informed list until that list has gone stale.
+        if (found.isNotEmpty() && (found.size >= ranked.size || now - rankedAt > 2000)) { ranked = found; rankedAt = now }
         renderResults()
     }
 
     private fun renderResults() {
         val now = System.currentTimeMillis()
-        addresses.entries.removeAll { now - it.value > 6000 }
-        codes.entries.removeAll { now - it.value > 6000 }
-        val key = addresses.keys.joinToString("|") + "#" + codes.keys.joinToString("|")
+        if (now - rankedAt > 6000) ranked = emptyList()
+        val key = ranked.joinToString("|") { it.address + it.role }
         if (key == shownKey && results.childCount > 0) return
         shownKey = key
         results.removeAllViews()
-        if (addresses.isEmpty() && codes.isEmpty()) {
+        if (ranked.isEmpty()) {
             results.addFull(label(14f, M.attr.colorOnSurfaceVariant).apply {
-                text = if (mode == MODE_FIND) "Waiting for a barcode…" else "Hold the label steady in view. Addresses and tracking numbers appear here."
+                text = if (mode == MODE_FIND) "Waiting for a barcode…" else "Hold the label steady in view. The delivery address appears here."
             })
             return
         }
-        if (codes.isNotEmpty()) results.addFull(label(12f, M.attr.colorPrimary, bold = true).apply {
-            text = "TRACKING / BARCODE: " + codes.keys.first() + if (codes.size > 1) " (+${codes.size - 1})" else ""
+        val primary = ranked.first()
+        results.addFull(label(12f, M.attr.colorPrimary, bold = true).apply {
+            text = if (primary.isReturn) "ONLY A RETURN ADDRESS SEEN" else "DELIVERY ADDRESS"
         })
-        for (a in addresses.keys.take(3)) {
-            results.addFull(compact(tonal(button("Use: $a") { finishWith(address = a, code = codes.keys.firstOrNull()) })), topDp = 6)
+        results.addFull(compact(button("Add: ${primary.address}") { finishWith(address = primary.address) }), topDp = 6)
+        for (c in ranked.drop(1).take(2)) {
+            val tag = if (c.isReturn) "Return address" else "Other address"
+            results.addFull(compact(button("$tag: ${c.address}", M.attr.materialButtonOutlinedStyle) { finishWith(address = c.address) }), topDp = 6)
         }
-        if (addresses.isEmpty() && codes.isNotEmpty()) results.addFull(compact(tonal(button("Use code only") {
-            finishWith(code = codes.keys.first())
-        })), topDp = 6)
     }
 
     private fun finishWith(address: String? = null, code: String? = null) {
@@ -201,7 +197,7 @@ class ScanActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        runCatching { barcodes.close(); text.close() }
+        runCatching { if (mode == MODE_FIND) barcodes.close() else text.close() }
         analysisExecutor.shutdown()
         super.onDestroy()
     }

@@ -68,8 +68,6 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
     /** The search bar is choosing the route start rather than adding a stop. */
     private var searchingStart = false
     private var searchingEnd = false
-    /** Tracking number from a scanned label, attached to the stop the driver picks next. */
-    private var pendingPackageId: String? = null
     private lateinit var pickLabel: android.widget.TextView
     private var locating = false
     private val refresh = { render() }
@@ -133,7 +131,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
             prefs.addRecent(s)
             if (searchingEnd) setEnd(RouteEnd(EndMode.ADDRESS, p, s.label))
             else if (searchingStart || currentStart() == null) setStart(RouteStart(p, s.label))
-            else actions.addStopAt(s.label, p, typed, s.approximate, packageId = pendingPackageId.also { pendingPackageId = null })
+            else actions.addStopAt(s.label, p, typed, s.approximate)
         }
         root.addView(searchPanel.card, CoordinatorLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.TOP })
         snackAnchor = android.view.View(this)
@@ -343,7 +341,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
     @Deprecated("Activity back handling; fine for a single-activity app")
     override fun onBackPressed() {
         when {
-            searchPanel.isShowing -> { searchPanel.clear(); searchingStart = false; searchingEnd = false; pendingPackageId = null; render() }
+            searchPanel.isShowing -> { searchPanel.clear(); searchingStart = false; searchingEnd = false; render() }
             map?.pickingFor != null -> endPick()
             behavior.state == BottomSheetBehavior.STATE_EXPANDED && map != null -> behavior.state = BottomSheetBehavior.STATE_COLLAPSED
             else -> @Suppress("DEPRECATION") super.onBackPressed()
@@ -663,6 +661,26 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
 
     // ---- Inputs --------------------------------------------------------------
 
+    /**
+     * A tapped address from Scan label: confirm it with Google (see [AddressSearch.validate]) and add it
+     * straight away; only if nothing confirms it does it go into the search bar to be picked or edited.
+     */
+    private fun addScanned(address: String) {
+        val search = actions.addressSearch()
+        val busy = Dialogs.busy(this, "Checking the address…")
+        actions.background({ search.validate(address) }) { r ->
+            busy.dismiss()
+            if (isFinishing || isDestroyed) return@background
+            val hit = r.getOrNull()
+            if (hit?.point != null) actions.addStopAt(hit.label.ifEmpty { address }, hit.point!!, typed = address, approximate = hit.approximate)
+            else {
+                this.search.setText(address)
+                searchPanel.submit()
+                snack("Couldn't confirm that address. Pick the right match, or edit it.")
+            }
+        }
+    }
+
     /** Search bar camera button / ⋮ → Scan label. */
     private fun scanLabel() {
         if (!requireStart()) return
@@ -841,15 +859,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
                 searchPanel.submit()
             }
             REQ_PHOTO -> Toast.makeText(this, "Photo attached", Toast.LENGTH_SHORT).show()
-            REQ_SCAN_LABEL -> {
-                val address = data?.getStringExtra(ScanActivity.EXTRA_ADDRESS)
-                pendingPackageId = data?.getStringExtra(ScanActivity.EXTRA_CODE)
-                if (address != null) {
-                    search.setText(address)
-                    searchPanel.submit()
-                    snack("Pick the matching address to add it" + if (pendingPackageId != null) " with its package" else "")
-                } else snack(pendingPackageId?.let { "Scanned $it, but no address was read" } ?: "Nothing scanned")
-            }
+            REQ_SCAN_LABEL -> data?.getStringExtra(ScanActivity.EXTRA_ADDRESS)?.let { addScanned(it) } ?: snack("No address read")
             REQ_SCAN_FIND -> data?.getStringExtra(ScanActivity.EXTRA_CODE)?.let { code ->
                 val s = SessionStore.session
                 val hit = s?.findPackage(code)
