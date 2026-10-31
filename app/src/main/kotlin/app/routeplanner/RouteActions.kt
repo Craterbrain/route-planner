@@ -65,7 +65,7 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
     fun newSession(stops: List<Stop>, pkgs: List<Pkg>, startMs: Long? = null) =
         RouteSession(stops, pkgs, prefs.navApp, prefs.autoNavigate, startMs = startMs).also {
             it.start = prefs.start
-            it.end = RouteEnd(prefs.endMode)
+            it.end = prefs.end
         }
 
     fun addressSearch(): AddressSearch {
@@ -132,7 +132,7 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
                 geocoder = search.geocoder(), memory = prefs.addressMemory)
             val src = Routing.source(act, prefs)
             val origin = start ?: if (m.stops.isEmpty()) null else centroid(m.stops)
-            val end = when (prefs.endMode) { EndMode.ROUND_TRIP -> origin; else -> null }
+            val end = when (prefs.end.mode) { EndMode.ROUND_TRIP -> origin; EndMode.ADDRESS -> prefs.end.point; else -> null }
             Triple(m, origin?.let { Solver.optimize(it, m.stops, src.provider, end = end) }, src) to nowMs
         }) { r ->
             dlg.close()

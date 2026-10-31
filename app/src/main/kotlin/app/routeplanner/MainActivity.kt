@@ -67,6 +67,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
     private var overlayWanted = false
     /** The search bar is choosing the route start rather than adding a stop. */
     private var searchingStart = false
+    private var searchingEnd = false
     private lateinit var pickLabel: android.widget.TextView
     private var locating = false
     private val refresh = { render() }
@@ -90,7 +91,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         prefs = Prefs(this)
         // Routes saved before starts existed (or a cleared Prefs): reconcile the two copies.
         SessionStore.session?.let { s ->
-            if (s.start == null && prefs.start != null) { s.start = prefs.start; s.end = RouteEnd(prefs.endMode) }
+            if (s.start == null && prefs.start != null) { s.start = prefs.start; s.end = prefs.end }
             else if (s.start != null && prefs.start == null) prefs.start = s.start
         }
         actions = RouteActions(this, prefs, this)
@@ -126,7 +127,8 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
             hideKeyboard()
             val p = s.point ?: return@SearchPanel
             prefs.addRecent(s)
-            if (searchingStart || currentStart() == null) setStart(RouteStart(p, s.label))
+            if (searchingEnd) setEnd(RouteEnd(EndMode.ADDRESS, p, s.label))
+            else if (searchingStart || currentStart() == null) setStart(RouteStart(p, s.label))
             else actions.addStopAt(s.label, p, typed, s.approximate)
         }
         root.addView(searchPanel.card, CoordinatorLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.TOP })
@@ -332,7 +334,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
     @Deprecated("Activity back handling; fine for a single-activity app")
     override fun onBackPressed() {
         when {
-            searchPanel.isShowing -> { searchPanel.clear(); searchingStart = false; render() }
+            searchPanel.isShowing -> { searchPanel.clear(); searchingStart = false; searchingEnd = false; render() }
             map?.pickingFor != null -> endPick()
             behavior.state == BottomSheetBehavior.STATE_EXPANDED && map != null -> behavior.state = BottomSheetBehavior.STATE_COLLAPSED
             else -> @Suppress("DEPRECATION") super.onBackPressed()
@@ -345,9 +347,13 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
     private fun render() {
         val s = SessionStore.session
         val start = currentStart()
-        sheet.render(s, start, s?.end?.mode ?: prefs.endMode)
-        map?.render(s, selectedId, start)
-        search.hint = if (searchingStart || start == null) "Search your starting address" else "Add a stop"
+        sheet.render(s, start, s?.end?.mode ?: prefs.end.mode)
+        map?.render(s, selectedId, start, endAddress())
+        search.hint = when {
+            searchingEnd -> "Search the ending address"
+            searchingStart || start == null -> "Search your starting address"
+            else -> "Add a stop"
+        }
         val curId = s?.current?.id?.takeIf { s.started }
         if (s != null && curId != null && curId != lastCursorId) sheet.list.post { sheet.scrollToCurrent(s) }
         lastCursorId = curId
@@ -486,10 +492,11 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
 
     // ---- RouteMap.Listener ---------------------------------------------------
 
-    override fun onStopTapped(id: String) = if (id == RouteMap.START_ID) editStart() else openStop(id)
+    override fun onStopTapped(id: String) = if (id == RouteMap.START_ID || id == RouteMap.END_ID) editStart() else openStop(id)
 
     override fun onPointPicked(stopId: String, p: LatLng) {
         if (stopId == RouteMap.START_ID) { endPick(); startAtPoint(p); return }
+        if (stopId == RouteMap.END_ID) { endPick(); endAtPoint(p); return }
         val s = SessionStore.session
         val st = s?.setAccess(stopId, p)
         endPick()
@@ -511,6 +518,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
             val cur = s?.current?.takeIf { s.started && it.status == Status.PENDING }
             Dialogs.mapPoint(this, address, canAddStop = currentStart() != null, currentStopLabel = cur?.let { "stop ${it.optimizedIndex}" },
                 onStart = { setStart(RouteStart(p, address ?: droppedPin(p))) },
+                onEnd = { setEnd(RouteEnd(EndMode.ADDRESS, p, address ?: droppedPin(p))) },
                 onAdd = { name -> actions.addStopAt(name, p) },
                 onDropOff = { cur?.let { onPointPicked(it.id, p) } })
         }
@@ -548,14 +556,45 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
     }
 
     override fun editStart() {
-        Dialogs.startOptions(this, SessionStore.session?.end?.mode ?: prefs.endMode,
+        Dialogs.startOptions(this, SessionStore.session?.end ?: prefs.end,
             onLocation = { useMyLocation() },
             onSearch = { searchStart() },
             onPick = if (map != null) ({ pickStartOnMap() }) else null,
-            onEnd = { mode ->
-                prefs.endMode = mode
-                SessionStore.session?.let { s -> s.end = RouteEnd(mode); SessionStore.commit(this); update() } ?: render()
-            })
+            onSearchEnd = { searchEnd() },
+            onPickEnd = if (map != null) ({ pickEndOnMap() }) else null,
+            onEnd = { setEnd(it) })
+    }
+
+    /** The chosen end address, when the route ends at one. */
+    private fun endAddress(): LatLng? = (SessionStore.session?.end ?: prefs.end).takeIf { it.mode == EndMode.ADDRESS }?.point
+
+    /** New end rule: saved as the default and applied to the open route (ETAs refresh). */
+    private fun setEnd(end: RouteEnd) {
+        searchingEnd = false
+        prefs.end = end
+        SessionStore.session?.let { s -> s.end = end; SessionStore.commit(this); update() } ?: render()
+        if (end.mode == EndMode.ADDRESS) snack("Route ends at ${splitAddress(end.label ?: "chosen address").first}")
+    }
+
+    private fun endAtPoint(p: LatLng) {
+        val search = actions.addressSearch()
+        actions.background({ search.reverse(p) }) { r -> setEnd(RouteEnd(EndMode.ADDRESS, p, r.getOrNull() ?: droppedPin(p))) }
+    }
+
+    private fun searchEnd() {
+        searchingEnd = true
+        searchingStart = false
+        render()
+        focusSearch()
+        snack("Type the ending address in the search bar")
+    }
+
+    private fun pickEndOnMap() {
+        val m = map ?: run { snack("The map is off (Settings). Search for the address instead."); return }
+        m.pickingFor = RouteMap.END_ID
+        pickLabel.text = "Tap the map where the route ends"
+        pickBanner.visibility = android.view.View.VISIBLE
+        behavior.state = BottomSheetBehavior.STATE_COLLAPSED
     }
 
     /** "Use my current location": fresh platform fix; explains and offers the permission flow when needed. */

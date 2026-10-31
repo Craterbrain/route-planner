@@ -53,6 +53,19 @@ class Prefs(ctx: Context) {
         get() = runCatching { EndMode.valueOf(sp.getString("endMode", "")!!) }.getOrDefault(EndMode.LAST_STOP)
         set(v) = sp.edit().putString("endMode", v.name).apply()
 
+    /** Where routes end: the mode plus, for [EndMode.ADDRESS], the chosen point and its label. */
+    var end: RouteEnd
+        get() {
+            val j = sp.getString("endPoint", null)?.let { runCatching { JSONObject(it) }.getOrNull() }
+            val pt = j?.let { LatLng(it.getDouble("lat"), it.getDouble("lng")) }
+            val mode = endMode.takeUnless { it == EndMode.ADDRESS && pt == null } ?: EndMode.LAST_STOP
+            return RouteEnd(mode, pt, j?.optString("label")?.ifEmpty { null })
+        }
+        set(v) = sp.edit().putString("endMode", v.mode.name).apply {
+            if (v.point == null) remove("endPoint")
+            else putString("endPoint", JSONObject().put("lat", v.point!!.lat).put("lng", v.point!!.lng).put("label", v.label ?: "").toString())
+        }.apply()
+
     /**
      * Google search-as-you-type (unofficial, keyless). On by default by the user's
      * choice; off = offline pack, phone geocoder and OSM only.

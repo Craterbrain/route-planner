@@ -112,7 +112,7 @@ class RouteMap(
 
     private enum class Basemap { LOADING, OK, FALLBACK }
 
-    private class Render(val s: RouteSession?, val selectedId: String?, val start: RouteStart?)
+    private class Render(val s: RouteSession?, val selectedId: String?, val start: RouteStart?, val end: LatLng?)
 
     init {
         installLogger()
@@ -365,14 +365,17 @@ class RouteMap(
      * Redraws pins for [s] plus the route [start] (a rounded-square "S" pin);
      * [selectedId] shows that stop's drop-off pin (defaults to the current stop).
      */
-    fun render(s: RouteSession?, selectedId: String? = null, start: RouteStart? = s?.start) {
+    fun render(s: RouteSession?, selectedId: String? = null, start: RouteStart? = s?.start, end: LatLng? = null) {
         if (s == null && start == null) { last = null; clear(); return }
-        last = Render(s, selectedId, start)
+        last = Render(s, selectedId, start, end)
         if (style != null) draw(last!!)
     }
 
     /** Distinct start pin: rounded square in the secondary color. */
-    private fun startImage(): Bitmap {
+    private fun startImage() = letterImage("S")
+
+    /** Rounded-square letter pin ("S" start, "E" end). */
+    private fun letterImage(letter: String): Bitmap {
         val d = ctx.dpf(30f)
         val bmp = Bitmap.createBitmap(d.toInt() + 2, d.toInt() + 2, Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)
@@ -387,7 +390,7 @@ class RouteMap(
         p.textAlign = Paint.Align.CENTER
         p.isFakeBoldText = true
         p.textSize = ctx.dpf(14f)
-        c.drawText("S", bmp.width / 2f, bmp.height / 2f - (p.descent() + p.ascent()) / 2, p)
+        c.drawText(letter, bmp.width / 2f, bmp.height / 2f - (p.descent() + p.ascent()) / 2, p)
         return bmp
     }
 
@@ -411,6 +414,14 @@ class RouteMap(
                 addNumberProperty("z", 4)
             }
         }
+        val endPin = r.end?.let { e ->
+            if (images.add(END_ICON)) st.addImage(END_ICON, letterImage("E"))
+            Feature.fromGeometry(Point.fromLngLat(e.lng, e.lat)).apply {
+                addStringProperty("id", END_ID)
+                addStringProperty("icon", END_ICON)
+                addNumberProperty("z", 4)
+            }
+        }
         val pins = stops.map { stop ->
             val isCur = stop.id == cur?.id
             val c = ctx.badgeColors(stop, isCur)
@@ -424,12 +435,13 @@ class RouteMap(
                 addNumberProperty("z", when { isCur -> 3; stop.status == Status.PENDING -> 2; else -> 1 })
             }
         }
-        st.getSourceAs<GeoJsonSource>(SRC_PINS)?.setGeoJson(FeatureCollection.fromFeatures(pins + listOfNotNull(startPin)))
+        st.getSourceAs<GeoJsonSource>(SRC_PINS)?.setGeoJson(FeatureCollection.fromFeatures(pins + listOfNotNull(startPin, endPin)))
 
         // Before any stop is done the line begins at the start (the depot).
         val underway = stops.any { it.status != Status.PENDING }
         val head = r.start?.takeIf { !underway }?.let { listOf(Point.fromLngLat(it.point.lng, it.point.lat)) }.orEmpty()
-        val remaining = head + stops.filter { it.status == Status.PENDING }.map { Point.fromLngLat(it.target.lng, it.target.lat) }
+        val remaining = head + stops.filter { it.status == Status.PENDING }.map { Point.fromLngLat(it.target.lng, it.target.lat) } +
+            listOfNotNull(r.end?.let { Point.fromLngLat(it.lng, it.lat) })
         st.getSourceAs<GeoJsonSource>(SRC_LINE)?.setGeoJson(
             if (remaining.size < 2) FeatureCollection.fromFeatures(emptyList())
             else FeatureCollection.fromFeature(Feature.fromGeometry(LineString.fromLngLats(remaining)))
@@ -452,7 +464,7 @@ class RouteMap(
         val m = map ?: return
         val r = last
         val pts = r?.s?.stops?.map { MapLatLng(it.target.lat, it.target.lng) }.orEmpty() +
-            listOfNotNull(r?.start?.point?.let { MapLatLng(it.lat, it.lng) })
+            listOfNotNull(r?.start?.point?.let { MapLatLng(it.lat, it.lng) }, r?.end?.let { MapLatLng(it.lat, it.lng) })
         if (pts.isEmpty()) { frameDefault(); return }
         val distinct = pts.distinct()
         if (distinct.size == 1) { m.easeCamera(CameraUpdateFactory.newLatLngZoom(distinct[0], 15.0)); return }
@@ -494,8 +506,10 @@ class RouteMap(
     companion object {
         /** Feature id of the start pin (tap → edit start). */
         const val START_ID = "__start__"
+        const val END_ID = "__end__"
         private const val STYLE_TIMEOUT_MS = 10_000L
         private const val START_ICON = "rp-start"
+        private const val END_ICON = "rp-end"
         private const val SRC_PINS = "rp-stops"
         private const val SRC_LINE = "rp-line"
         private const val SRC_ACCESS = "rp-access"
