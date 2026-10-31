@@ -3,6 +3,8 @@
 
     <!-- Map tiles (OpenFreeMap) and the optional Valhalla server. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Connectivity check for the "Network" row and map/search error messages. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />

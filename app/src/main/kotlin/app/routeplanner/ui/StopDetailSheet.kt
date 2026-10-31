@@ -102,10 +102,10 @@ class StopDetailSheet(private val act: Activity, private val host: RouteHost, pr
 
         // Primary actions.
         val actions = act.horizontal()
-        actions.addWeighted(act.tonal(act.button("Navigate", icon = R.drawable.ic_navigation) { closeThen { host.navigate(st.id) } }), marginDp = 3)
+        actions.addWeighted(act.compact(act.tonal(act.button("Navigate", icon = R.drawable.ic_navigation) { closeThen { host.navigate(st.id) } })), marginDp = 3)
         if (st.status == Status.PENDING) {
-            actions.addWeighted(act.button("Failed", M.attr.materialButtonOutlinedStyle) { closeThen { host.fail(st.id) } }, marginDp = 3)
-            actions.addWeighted(act.button("Delivered", icon = R.drawable.ic_check) { closeThen { host.deliver(st.id) } }, marginDp = 3)
+            actions.addWeighted(act.compact(act.button("Failed", M.attr.materialButtonOutlinedStyle) { closeThen { host.fail(st.id) } }), marginDp = 3)
+            actions.addWeighted(act.compact(act.button("Delivered", icon = R.drawable.ic_check) { closeThen { host.deliver(st.id) } }), marginDp = 3)
         } else {
             actions.addWeighted(act.button("Undo", M.attr.materialButtonOutlinedStyle) { host.undo(st.id); render() }, marginDp = 3)
         }

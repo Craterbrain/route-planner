@@ -1,6 +1,10 @@
 package app.routeplanner
 
+import android.Manifest
 import android.app.Activity
+import android.content.pm.PackageManager
+import android.os.Build
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
@@ -54,7 +58,15 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
     private var selectedId: String? = null
     private var lastCursorId: String? = null
     private var topInset = 0
+    private var bottomInset = 0
+    private lateinit var searchPanel: SearchPanel
+    /** Zero-height view at the bottom (above nav bar / keyboard) that snackbars sit on. */
+    private lateinit var snackAnchor: android.view.View
+    private var permissions: PermissionsSheet? = null
+    /** User turned the floating button on but must grant "display over other apps" first. */
+    private var overlayWanted = false
     private val refresh = { render() }
+    private val netChanged = { map?.onNetworkChanged(); Unit }
 
     override val mapAvailable: Boolean get() = map != null
 
@@ -83,18 +95,29 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         root = CoordinatorLayout(this).apply { setBackgroundColor(color(M.attr.colorSurface)) }
         val mapBox = FrameLayout(this)
         root.addView(mapBox, CoordinatorLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        if (prefs.showMap) map = RouteMap(this, mapBox, b, this)
+        if (prefs.showMap) map = RouteMap(this, mapBox, b, this) { actions.lastLocation(ask = false) }
         else mapBox.addView(mapOffNotice(this), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
 
         topBar = buildTopBar()
         root.addView(topBar, CoordinatorLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.TOP })
         pickBanner = buildPickBanner()
         root.addView(pickBanner, CoordinatorLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.TOP })
+        map?.let { m ->
+            root.addView(m.chip, CoordinatorLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.TOP or Gravity.START })
+        }
 
         sheet = RouteSheet(this, this)
         val sheetParams = CoordinatorLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         sheetParams.behavior = BottomSheetBehavior<LinearLayout>()
         root.addView(sheet.view, sheetParams)
+        // Search suggestions float above the sheet, under the search bar.
+        searchPanel = SearchPanel(this, search, { actions.addressSearch() }) { s, typed ->
+            hideKeyboard()
+            actions.addStopAt(s.label, s.point, typed)
+        }
+        root.addView(searchPanel.card, CoordinatorLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.TOP })
+        snackAnchor = android.view.View(this)
+        root.addView(snackAnchor, CoordinatorLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0).apply { gravity = Gravity.BOTTOM })
         behavior = BottomSheetBehavior.from(sheet.view).apply {
             isFitToContents = false
             halfExpandedRatio = 0.5f
@@ -111,7 +134,11 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
 
         ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
             topInset = bars.top
+            bottomInset = maxOf(bars.bottom, ime.bottom)
+            (snackAnchor.layoutParams as ViewGroup.MarginLayoutParams).bottomMargin = bottomInset + dp(8)
+            snackAnchor.requestLayout()
             (topBar.layoutParams as ViewGroup.MarginLayoutParams).setMargins(bars.left + dp(12), bars.top + dp(8), bars.right + dp(12), 0)
             topBar.requestLayout()
             sheet.setBottomInset(bars.bottom)
@@ -120,6 +147,20 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         }
         setContentView(root)
         handleIntent(intent)
+        if (!prefs.setupShown) {
+            prefs.setupShown = true
+            root.post { showPermissions() }
+        }
+    }
+
+    private fun showPermissions() {
+        if (isFinishing || isDestroyed || permissions?.isShowing == true) return
+        permissions = PermissionsSheet(this, { prefs.geocoderUrl }) { permissions = null }.also { it.show() }
+    }
+
+    private fun hideKeyboard() {
+        search.clearFocus()
+        (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(search.windowToken, 0)
     }
 
     // ---- Layout pieces -------------------------------------------------------
@@ -146,7 +187,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
             setPadding(dp(12), dp(14), dp(4), dp(14))
             setOnEditorActionListener { _, id, ev ->
                 val enter = ev?.keyCode == KeyEvent.KEYCODE_ENTER && ev.action == KeyEvent.ACTION_DOWN
-                if (id == EditorInfo.IME_ACTION_SEARCH || enter) { submitSearch(); true } else false
+                if (id == EditorInfo.IME_ACTION_SEARCH || enter) { searchPanel.submit(); true } else false
             }
         }
         row.addWeighted(search)
@@ -186,6 +227,12 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         if (root.height > 0) behavior.halfExpandedRatio = ((peek + dp(220)).toFloat() / root.height).coerceIn(0.5f, 0.9f)
         (pickBanner.layoutParams as ViewGroup.MarginLayoutParams).setMargins(dp(12), barBottom + dp(8), dp(12), 0)
         pickBanner.requestLayout()
+        (searchPanel.card.layoutParams as ViewGroup.MarginLayoutParams).setMargins(dp(12), barBottom + dp(6), dp(12), 0)
+        searchPanel.card.requestLayout()
+        map?.chip?.let { c ->
+            (c.layoutParams as ViewGroup.MarginLayoutParams).setMargins(dp(16), barBottom + dp(6), dp(16), 0)
+            c.requestLayout()
+        }
         map?.updateInsets(barBottom, peek)
     }
 
@@ -198,7 +245,8 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
             if (hasPending) menu.add(0, 3, 0, "Update times (keep order)")
             if (hasPending) menu.add(0, 4, 0, "Reverse route")
             if (map != null && s != null) menu.add(0, 5, 0, "Show whole route")
-            menu.add(0, 6, 0, "Floating action bar")
+            menu.add(0, 6, 0, "Floating button").apply { isCheckable = true; isChecked = OverlayService.running }
+            menu.add(0, 9, 0, "Permissions & network")
             menu.add(0, 7, 0, "Settings")
             if (s != null) menu.add(0, 8, 0, "Clear route")
             setOnMenuItemClickListener {
@@ -211,6 +259,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
                     6 -> toggleOverlay()
                     7 -> showSettings()
                     8 -> clearRoute()
+                    9 -> showPermissions()
                 }
                 true
             }
@@ -228,10 +277,28 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         if (i.action == ACTION_FAIL) SessionStore.session?.current?.let { fail(it.id) }
     }
 
-    override fun onStart() { super.onStart(); map?.onStart(); SessionStore.observe(refresh); render() }
-    override fun onResume() { super.onResume(); map?.onResume() }
-    override fun onPause() { map?.onPause(); super.onPause() }
-    override fun onStop() { SessionStore.unobserve(refresh); map?.onStop(); super.onStop() }
+    override fun onStart() {
+        super.onStart()
+        map?.onStart()
+        SessionStore.observe(refresh)
+        NetStatus.observe(netChanged)
+        NetStatus.check(this, prefs.geocoderUrl)
+        render()
+    }
+    override fun onResume() {
+        super.onResume()
+        map?.onResume()
+        OverlayService.appInForeground = true
+        permissions?.refresh()
+        if (overlayWanted && Settings.canDrawOverlays(this)) { overlayWanted = false; startOverlay() }
+    }
+    override fun onPause() { OverlayService.appInForeground = false; map?.onPause(); super.onPause() }
+    override fun onStop() { SessionStore.unobserve(refresh); NetStatus.unobserve(netChanged); map?.onStop(); super.onStop() }
+
+    override fun onRequestPermissionsResult(req: Int, perms: Array<out String>, results: IntArray) {
+        super.onRequestPermissionsResult(req, perms, results)
+        permissions?.refresh()
+    }
     override fun onDestroy() { map?.onDestroy(); map = null; super.onDestroy() }
     override fun onLowMemory() { super.onLowMemory(); map?.onLowMemory() }
     override fun onSaveInstanceState(out: Bundle) { super.onSaveInstanceState(out); map?.onSaveInstanceState(out) }
@@ -239,6 +306,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
     @Deprecated("Activity back handling; fine for a single-activity app")
     override fun onBackPressed() {
         when {
+            searchPanel.isShowing -> searchPanel.clear()
             map?.pickingFor != null -> endPick()
             behavior.state == BottomSheetBehavior.STATE_EXPANDED && map != null -> behavior.state = BottomSheetBehavior.STATE_COLLAPSED
             else -> @Suppress("DEPRECATION") super.onBackPressed()
@@ -258,8 +326,11 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
 
     override fun snack(text: String, action: String?, onAction: (() -> Unit)?) {
         if (isFinishing || isDestroyed) return
+        // Anchored above the nav bar / keyboard (insets are consumed at the root, so the
+        // snackbar can't see them itself); LENGTH_LONG always auto-dismisses.
         val bar = Snackbar.make(root, text, Snackbar.LENGTH_LONG)
         if (action != null && onAction != null) bar.setAction(action) { onAction() }
+        bar.anchorView = snackAnchor
         bar.show()
     }
 
@@ -389,8 +460,11 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         update()
     }
 
+    override fun onMapRetry() = NetStatus.check(this, prefs.geocoderUrl)
+
     override fun onLongPress(p: LatLng) {
-        actions.background({ PlatformGeocoder(this).reverse(p) }) { r ->
+        val search = actions.addressSearch()
+        actions.background({ search.reverse(p) }) { r ->
             if (isFinishing || isDestroyed) return@background
             val address = r.getOrNull()
             val s = SessionStore.session
@@ -402,15 +476,6 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
     }
 
     // ---- Inputs --------------------------------------------------------------
-
-    private fun submitSearch() {
-        val text = search.text.toString().trim()
-        if (text.isEmpty()) return
-        search.setText("")
-        search.clearFocus()
-        (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(search.windowToken, 0)
-        actions.addAddress(text)
-    }
 
     private fun startVoice() {
         runCatching {
@@ -430,14 +495,29 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         }.onFailure { Toast.makeText(this, "No camera app available", Toast.LENGTH_SHORT).show() }
     }
 
+    /** ⋮ → Floating button: a real on/off toggle. */
     private fun toggleOverlay() {
+        if (OverlayService.running) { OverlayService.stop(this); snack("Floating button off"); return }
         if (!Settings.canDrawOverlays(this)) {
-            Toast.makeText(this, "Allow “display over other apps”, then try again", Toast.LENGTH_LONG).show()
-            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+            MaterialAlertDialogBuilder(this)
+                .setTitle("Allow display over other apps")
+                .setMessage("The floating button sits on top of Google Maps or Waze. Android only grants this in its Settings: on the next screen, find Route Planner and turn on \"Allow display over other apps\", then come back.")
+                .setPositiveButton("Open Settings") { _, _ ->
+                    overlayWanted = true
+                    startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+                }
+                .setNegativeButton("Not now", null)
+                .show()
             return
         }
+        startOverlay()
+    }
+
+    private fun startOverlay() {
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), PermissionsSheet.REQ)
         OverlayService.start(this)
-        snack("Action bar on: it floats over your navigation app")
+        snack("Floating button on: it shows over your navigation app. Tap it for actions, drag to move.")
     }
 
     private fun showSettings() {
@@ -447,15 +527,17 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
             autoNavigate = prefs.autoNavigate,
             showMap = prefs.showMap,
             serverUrl = prefs.valhallaUrl,
+            geocoderUrl = prefs.geocoderUrl,
             roadsInfo = if (tiles.exists()) "Offline road data installed (${tiles.length() / 1_000_000} MB)."
             else "No offline road data: times come from the server below, or straight-line estimates.",
         )
-        Dialogs.settings(this, model, importRoads = {
+        Dialogs.settings(this, model, openPermissions = { showPermissions() }, importRoads = {
             startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), REQ_TILES)
         }) { m ->
             prefs.navApp = if (m.waze) NavApp.WAZE else NavApp.GOOGLE
             prefs.autoNavigate = m.autoNavigate
             prefs.valhallaUrl = m.serverUrl
+            prefs.geocoderUrl = m.geocoderUrl
             SessionStore.session?.let { s -> s.navApp = prefs.navApp; s.autoNavigate = m.autoNavigate; SessionStore.commit(this) }
             if (m.showMap != prefs.showMap) { prefs.showMap = m.showMap; recreate() }
         }
@@ -470,7 +552,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
             REQ_TILES -> data?.data?.let { actions.importTiles(it) }
             REQ_VOICE -> data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let {
                 search.setText(it)
-                submitSearch()
+                searchPanel.submit()
             }
             REQ_PHOTO -> Toast.makeText(this, "Photo attached", Toast.LENGTH_SHORT).show()
         }

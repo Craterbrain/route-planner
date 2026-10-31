@@ -46,14 +46,23 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
 
     /** Last known fix if permitted (asks once per process); null when unknown. */
     @SuppressLint("MissingPermission")
-    fun lastLocation(): LatLng? {
+    fun lastLocation(ask: Boolean = true): LatLng? {
         if (act.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            if (!askedLocation) { askedLocation = true; act.requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), REQ_LOCATION) }
+            if (ask && !askedLocation) { askedLocation = true; act.requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), REQ_LOCATION) }
             return null
         }
         val lm = act.getSystemService(Context.LOCATION_SERVICE) as LocationManager
         return runCatching { lm.getProviders(true).mapNotNull { lm.getLastKnownLocation(it) }.maxByOrNull { it.time } }
             .getOrNull()?.let { LatLng(it.latitude, it.longitude) }
+    }
+
+    /** Where address search should look first: the phone, else the route. Never prompts. */
+    fun searchBias(): LatLng? = lastLocation(ask = false)
+        ?: SessionStore.session?.stops?.takeIf { it.isNotEmpty() }?.let { centroid(it) }
+
+    fun addressSearch(): AddressSearch {
+        val bias = searchBias()
+        return AddressSearch(act, prefs) { bias }
     }
 
     private fun centroid(stops: List<Stop>) =
@@ -100,13 +109,14 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
     fun importCsv(uri: Uri) {
         val dlg = busy("Planning route…", "Geocoding and routing")
         val start = lastLocation()
+        val search = addressSearch()
         background({
             val text = act.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
                 ?: error("Couldn't read the file")
             val nowMs = System.currentTimeMillis()
             // Route clock zero = now, so HH:MM windows become seconds from now.
             val m = importManifest(text, dayStartSec = LocalTime.now().toSecondOfDay().toLong(),
-                geocoder = PlatformGeocoder(act), memory = prefs.addressMemory)
+                geocoder = search.geocoder(), memory = prefs.addressMemory)
             val src = Routing.source(act, prefs)
             val origin = start ?: if (m.stops.isEmpty()) null else centroid(m.stops)
             Triple(m, origin?.let { Solver.optimize(it, m.stops, src.provider) }, src) to nowMs
@@ -116,7 +126,7 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
             val (m, route, src) = res
             if (route == null || route.stops.isEmpty()) {
                 val why = m.errors.joinToString("\n").ifEmpty { "No rows" }
-                alert("Nothing imported", why + if (!android.location.Geocoder.isPresent()) "\n\nThis device has no geocoder: include lat,lng columns." else "")
+                alert("Nothing imported", why + if (NetStatus.systemSaysOffline(act)) "\n\nNo network access, so addresses without lat,lng couldn't be looked up." else "")
                 return@background
             }
             SessionStore.set(act, RouteSession(route.stops, m.packages, prefs.navApp, prefs.autoNavigate, startMs = nowMs))
@@ -127,26 +137,6 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
                 (if (m.errors.isNotEmpty()) "\n\nSkipped:\n" + m.errors.joinToString("\n") else "") +
                 "\n\nTap Start route when you're ready."
             alert("Route planned", msg)
-        }
-    }
-
-    /** Search-bar entry: geocodes [text]; one hit is added, several are offered to choose from. */
-    fun addAddress(text: String) {
-        val q = text.trim()
-        if (q.isEmpty()) return
-        if (!android.location.Geocoder.isPresent()) {
-            alert("No address search on this device", "This phone has no geocoding service. Long-press the map to drop a stop, or import a spreadsheet with lat,lng columns.")
-            return
-        }
-        background({ PlatformGeocoder(act).candidates(q, 5) }) { r ->
-            val hits = r.getOrDefault(emptyList())
-            when {
-                hits.isEmpty() -> ui.snack("Couldn't find “$q”")
-                hits.size == 1 -> addStopAt(hits[0].label, hits[0].point, typed = q)
-                alive -> MaterialAlertDialogBuilder(act).setTitle("Choose address")
-                    .setItems(hits.map { it.label }.toTypedArray()) { _, i -> addStopAt(hits[i].label, hits[i].point, typed = q) }
-                    .setNegativeButton("Cancel", null).show()
-            }
         }
     }
 

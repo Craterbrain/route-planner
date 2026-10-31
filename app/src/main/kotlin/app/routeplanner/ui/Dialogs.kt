@@ -134,11 +134,13 @@ object Dialogs {
         var autoNavigate: Boolean,
         var showMap: Boolean,
         var serverUrl: String,
+        var geocoderUrl: String,
         val roadsInfo: String,
     )
 
-    fun settings(ctx: Context, m: SettingsModel, importRoads: () -> Unit, onSave: (SettingsModel) -> Unit) {
+    fun settings(ctx: Context, m: SettingsModel, openPermissions: () -> Unit, importRoads: () -> Unit, onSave: (SettingsModel) -> Unit) {
         val box = ctx.vertical(padH = 24, padV = 8)
+        box.addFull(ctx.button("Permissions & network…", M.attr.materialButtonOutlinedStyle) { openPermissions() }, bottomDp = 8)
         box.addFull(ctx.label(12f, M.attr.colorPrimary, bold = true).apply { text = "NAVIGATION" })
         val nav = toggleGroup(ctx, listOf("Google Maps", "Waze"), if (m.waze) "Waze" else "Google Maps").apply { isSelectionRequired = true }
         box.addFull(nav, topDp = 4)
@@ -162,12 +164,24 @@ object Dialogs {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
         }
         box.addFull(url)
+
+        box.addFull(ctx.label(12f, M.attr.colorPrimary, bold = true).apply { text = "ADDRESS SEARCH" }, topDp = 16)
+        box.addFull(ctx.label(13f, M.attr.colorOnSurfaceVariant).apply {
+            text = "Uses the phone's geocoder if it has one, otherwise Photon (OpenStreetMap). What you type is sent to that server. Leave blank for the public photon.komoot.io, or enter your own Photon URL."
+        })
+        val geo = EditText(ctx).apply {
+            hint = "https://photon.komoot.io"
+            setText(m.geocoderUrl)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+        }
+        box.addFull(geo)
         MaterialAlertDialogBuilder(ctx).setTitle("Settings").setView(ScrollView(ctx).apply { addView(box) })
             .setPositiveButton("Save") { _, _ ->
                 m.waze = nav.value() == "Waze"
                 m.autoNavigate = auto.isChecked
                 m.showMap = map.isChecked
                 m.serverUrl = url.text.toString()
+                m.geocoderUrl = geo.text.toString()
                 onSave(m)
             }
             .setNegativeButton("Close", null).show()

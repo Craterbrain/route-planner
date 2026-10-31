@@ -77,8 +77,8 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
             text = "Add stops with the search bar (type or speak), long-press the map to drop one, or import a spreadsheet of addresses."
         }, topDp = 4, bottomDp = 12)
         val row = ctx.horizontal()
-        row.addWeighted(ctx.button("Import spreadsheet", M.attr.materialButtonOutlinedStyle) { host.importCsv() }, marginDp = 4)
-        row.addWeighted(ctx.button("Add stop", icon = R.drawable.ic_add) { host.focusSearch() }, marginDp = 4)
+        row.addWeighted(ctx.compact(ctx.button("Import spreadsheet", M.attr.materialButtonOutlinedStyle) { host.importCsv() }), marginDp = 4)
+        row.addWeighted(ctx.compact(ctx.button("Add stop", icon = R.drawable.ic_add) { host.focusSearch() }), marginDp = 4)
         header.addFull(row, bottomDp = 12)
     }
 
@@ -102,8 +102,8 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
         }, topDp = 2)
         if (s.dirty) changedBanner()
         val row = ctx.horizontal()
-        row.addWeighted(ctx.tonal(ctx.button("Optimize") { host.optimize() }), marginDp = 4)
-        row.addWeighted(ctx.button("Start route", icon = R.drawable.ic_navigation) { host.startRoute() }, marginDp = 4)
+        row.addWeighted(ctx.compact(ctx.tonal(ctx.button("Optimize") { host.optimize() })), marginDp = 4)
+        row.addWeighted(ctx.compact(ctx.button("Start route", icon = R.drawable.ic_navigation) { host.startRoute() }), marginDp = 4)
         header.addFull(row, topDp = 10, bottomDp = 8)
     }
 
@@ -171,11 +171,11 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
         body.addFull(ctx.tonal(ctx.button("Navigate", icon = R.drawable.ic_navigation) { host.navigate(c.id) }), topDp = 8)
         val actions = ctx.horizontal()
         if (c.status == Status.PENDING) {
-            actions.addWeighted(ctx.button("Failed", M.attr.materialButtonOutlinedStyle, R.drawable.ic_close) { host.fail(c.id) }, 1f, marginDp = 2)
-            actions.addWeighted(ctx.button("Proof", M.attr.materialButtonOutlinedStyle) { host.deliverWithProof(c.id) }, 0.9f, marginDp = 2)
-            actions.addWeighted(ctx.button("Delivered", icon = R.drawable.ic_check) { host.deliver(c.id) }.apply {
+            actions.addWeighted(ctx.compact(ctx.button("Failed", M.attr.materialButtonOutlinedStyle) { host.fail(c.id) }), 1f, height = ctx.dp(56), marginDp = 2)
+            actions.addWeighted(ctx.compact(ctx.button("Proof", M.attr.materialButtonOutlinedStyle) { host.deliverWithProof(c.id) }), 0.9f, height = ctx.dp(56), marginDp = 2)
+            actions.addWeighted(ctx.compact(ctx.button("Delivered", icon = R.drawable.ic_check) { host.deliver(c.id) }).apply {
                 setOnLongClickListener { host.deliverWithProof(c.id); true }
-            }, 1.4f, height = ctx.dp(56), marginDp = 2)
+            }, 1.5f, height = ctx.dp(56), marginDp = 2)
         } else {
             actions.addWeighted(ctx.button("Undo", M.attr.materialButtonOutlinedStyle) { host.undo(c.id) }, marginDp = 2)
         }
@@ -193,8 +193,8 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
             ).joinToString(" · ")
         })
         val row = ctx.horizontal()
-        row.addWeighted(ctx.button("New route", M.attr.materialButtonOutlinedStyle) { host.clearRoute() }, marginDp = 4)
-        row.addWeighted(ctx.button("Import spreadsheet") { host.importCsv() }, marginDp = 4)
+        row.addWeighted(ctx.compact(ctx.button("New route", M.attr.materialButtonOutlinedStyle) { host.clearRoute() }), marginDp = 4)
+        row.addWeighted(ctx.compact(ctx.button("Import spreadsheet") { host.importCsv() }), marginDp = 4)
         header.addFull(row, topDp = 10, bottomDp = 8)
     }
 

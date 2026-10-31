@@ -11,6 +11,7 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.RecyclerView
 import app.routeplanner.R
@@ -29,7 +30,7 @@ import com.google.android.material.R as M
 class StopAdapter(private val ctx: Context, private val host: RouteHost) : RecyclerView.Adapter<StopAdapter.Holder>() {
 
     /** Pre-formatted row content (built by [RouteSheet] from the session). */
-    class Row(
+    data class Row(
         val stop: Stop,
         val current: Boolean,
         val line1: String,
@@ -49,10 +50,21 @@ class StopAdapter(private val ctx: Context, private val host: RouteHost) : Recyc
 
     init { setHasStableIds(true) }
 
-    @SuppressLint("NotifyDataSetChanged")
+    /**
+     * Granular updates via DiffUtil. (notifyDataSetChanged while ItemTouchHelper
+     * was still animating a swiped row left a stale holder that kept painting
+     * an "Undo" strip forever.)
+     */
     fun submit(new: List<Row>) {
+        val old = rows
+        val diff = DiffUtil.calculateDiff(object : DiffUtil.Callback() {
+            override fun getOldListSize() = old.size
+            override fun getNewListSize() = new.size
+            override fun areItemsTheSame(o: Int, n: Int) = old[o].stop.id == new[n].stop.id
+            override fun areContentsTheSame(o: Int, n: Int) = old[o] == new[n]
+        })
         rows = new.toMutableList()
-        notifyDataSetChanged()
+        diff.dispatchUpdatesTo(this)
     }
 
     override fun getItemCount() = rows.size
@@ -183,10 +195,11 @@ class StopAdapter(private val ctx: Context, private val host: RouteHost) : Recyc
         override fun getSwipeThreshold(vh: RecyclerView.ViewHolder) = 0.35f
 
         override fun onChildDraw(c: Canvas, rv: RecyclerView, vh: RecyclerView.ViewHolder, dX: Float, dY: Float, actionState: Int, active: Boolean) {
-            if (actionState == ItemTouchHelper.ACTION_STATE_SWIPE && dX != 0f) {
+            val pos = vh.adapterPosition
+            // Only paint behind a row that is really being swiped and still in the list.
+            if (actionState == ItemTouchHelper.ACTION_STATE_SWIPE && dX != 0f && pos != RecyclerView.NO_POSITION && pos < rows.size && vh.itemView.parent != null) {
                 val v = vh.itemView
-                val pos = vh.adapterPosition
-                val pending = pos != RecyclerView.NO_POSITION && rows[pos].stop.status == Status.PENDING
+                val pending = rows[pos].stop.status == Status.PENDING
                 val left = dX < 0
                 val (bg, fg, text) = when {
                     !left -> Triple(M.attr.colorSecondaryContainer, M.attr.colorOnSecondaryContainer, "Navigate")

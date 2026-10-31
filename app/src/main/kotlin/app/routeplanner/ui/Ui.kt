@@ -45,6 +45,20 @@ fun Context.iconButton(icon: Int, description: String, style: Int = M.attr.mater
         setOnClickListener { onClick() }
     }
 
+/**
+ * Fits a button into a tight weighted slot: one line, small side padding, and
+ * text that shrinks (down to 11sp) instead of wrapping at large font scales.
+ */
+fun Context.compact(b: MaterialButton) = b.apply {
+    isSingleLine = true
+    maxLines = 1
+    setPadding(dp(8), paddingTop, dp(8), paddingBottom)
+    iconPadding = dp(4)
+    minWidth = 0
+    minimumWidth = 0
+    androidx.core.widget.TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(this, 11, 16, 1, android.util.TypedValue.COMPLEX_UNIT_SP)
+}
+
 /** Tonal button = filled button on secondaryContainer (Material 3 "filled tonal"). */
 fun Context.tonal(b: MaterialButton) = b.apply {
     backgroundTintList = ColorStateList.valueOf(color(M.attr.colorSecondaryContainer))
