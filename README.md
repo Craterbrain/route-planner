@@ -39,7 +39,7 @@ Manifest CSV columns: `address,lat,lng,package,zone,priority,window_start,window
 
 ## Not yet verified on a device
 
-The APK builds but has not been run on a phone or emulator. First things to check: overlay permission flow; `✓` with auto-navigate launching Maps from over another app; the on-device Valhalla engine opening a tile extract (`Routing.kt`); `tools/build-tiles.sh` (written from docs, never run).
+The APK builds but has not been run on a phone or emulator. First things to check: overlay permission flow; `✓` with auto-navigate launching Maps from over another app; the on-device Valhalla engine opening a tile extract (`Routing.kt`); `tools/build-tiles.sh` has been run for Tennessee (see tools/build-tiles.sh header), but the phone has not yet loaded the result.
 
 ## Roadmap
 
