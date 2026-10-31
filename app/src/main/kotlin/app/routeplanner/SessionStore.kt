@@ -108,6 +108,7 @@ object SessionStore {
                 .put("proofNote", it.proofNote ?: JSONObject.NULL)
                 .put("proofPhoto", it.proofPhoto ?: JSONObject.NULL)
                 .put("proofSignature", it.proofSignature ?: JSONObject.NULL)
+                .put("entryNo", it.entryNo)
                 .put("approximate", it.approximate)
         }))
         .put("packages", JSONArray(s.packages.map {
@@ -142,6 +143,7 @@ object SessionStore {
                     proofNote = it.optStr("proofNote"),
                     proofPhoto = it.optStr("proofPhoto"),
                     proofSignature = it.optStr("proofSignature"),
+                    entryNo = it.optInt("entryNo", 0), // 0 = saved before address IDs; the session numbers it
                     approximate = it.optBoolean("approximate", false),
                 )
             }

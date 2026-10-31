@@ -7,7 +7,7 @@ import java.time.format.DateTimeFormatter
 /** Everything the driver recorded for one stop, ready to hand to a customer or dispatcher. */
 object DeliveryReport {
     val COLUMNS = listOf(
-        "stop", "address", "status", "time", "failure_reason", "packages", "note", "photo", "signature", "notes_for_stop",
+        "stop", "id", "address", "status", "time", "failure_reason", "packages", "note", "photo", "signature", "notes_for_stop",
     )
 
     private val FAIL_TEXT = mapOf(
@@ -37,6 +37,7 @@ object DeliveryReport {
             val pk = packages.filter { it.stopId == s.id }.joinToString("; ") { it.id }
             val row = listOf(
                 s.optimizedIndex.toString(),
+                s.entryNo.toString(),
                 s.address,
                 s.status.name.lowercase(),
                 s.completedAt?.let { fmt.format(Instant.ofEpochMilli(it)) } ?: "",

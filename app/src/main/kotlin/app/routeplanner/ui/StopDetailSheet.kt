@@ -90,7 +90,7 @@ class StopDetailSheet(private val act: Activity, private val host: RouteHost, pr
         if (l2.isNotEmpty()) titles.addFull(act.label(14f, M.attr.colorOnSurfaceVariant).apply { text = l2 })
         titles.addFull(act.label(14f, if (st.status == Status.FAILED) M.attr.colorError else M.attr.colorOnSurface).apply {
             text = when (st.status) {
-                Status.PENDING -> "Stop ${st.optimizedIndex} · ETA ${act.clock(s, sum.projectedEta(st))}" +
+                Status.PENDING -> "Stop ${st.optimizedIndex} · ID ${st.entryNo} · ETA ${act.clock(s, sum.projectedEta(st))}" +
                     (st.legMeters.takeIf { it > 0 }?.let { " · " + formatDistance(it, imperialUnits()) } ?: "")
                 Status.COMPLETED -> "Delivered" + (st.completedAt?.let { " at " + time(it) } ?: "")
                 Status.FAILED -> "Failed: " + (st.failReason?.let { FAIL_LABELS[it] } ?: "no reason") + (st.completedAt?.let { " at " + time(it) } ?: "")
@@ -148,10 +148,15 @@ class StopDetailSheet(private val act: Activity, private val host: RouteHost, pr
 
         section("Package finder")
         val pkgs = s.finder(st)
+        body.addFull(act.label(15f, bold = true).apply { text = totalPackages(pkgs.size) })
         if (pkgs.isEmpty()) body.addFull(act.label(14f, M.attr.colorOnSurfaceVariant).apply { text = "No packages listed for this stop." })
         for (p in pkgs) body.addFull(row("${p.id}\n${p.truckZone ?: "Location not set"}", "Set location") {
             Dialogs.zone(act, p.id, p.truckZone) { z -> session()?.setZone(p.id, z); commit(); render() }
         })
+
+        if (st.status == Status.PENDING) body.addFull(act.button("Add another package", M.attr.materialButtonOutlinedStyle) {
+            session()?.addPackageTo(st.id); commit(); render()
+        }, topDp = 4)
 
         section("Drop-off point")
         val moved = st.access != st.target

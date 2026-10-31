@@ -210,6 +210,7 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
             gravity = Gravity.CENTER
             text = "Stop ${c.optimizedIndex} of ${s.stops.size}" +
                 (if (c.status == Status.PENDING) " · ETA ${ctx.clock(s, sum.projectedEta(c))}" else " · ${c.status.name.lowercase()}") +
+                " · ID ${c.entryNo} · ${totalPackages(s.finder(c).size)}" +
                 "\n$pendingAfter left · ${summaryLine(s, sum, remainingOnly = true)}"
         })
         top.addView(ctx.iconButton(R.drawable.ic_chevron_right, "Next stop") { host.next() })
@@ -285,10 +286,11 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
             val cond = conditions(s, st, sum)
             val meta = listOfNotNull(
                 if (st.approximate && st.access == st.target) "Estimated position, adjust pin" else null,
+                "ID ${st.entryNo}",
                 cond.ifEmpty { null },
                 pkgs.takeIf { it.isNotEmpty() }?.let { p ->
                     val zones = p.mapNotNull { it.truckZone }.distinct()
-                    "${p.size} pkg" + (if (p.size > 1) "s" else "") + if (zones.isEmpty()) "" else ": " + zones.joinToString(", ")
+                    totalPackages(p.size) + if (zones.isEmpty()) "" else " (" + zones.joinToString(", ") + ")"
                 },
                 st.notes.takeIf { it.isNotBlank() }?.let { "Note: $it" },
                 st.failReason?.let { FAIL_LABELS[it] },

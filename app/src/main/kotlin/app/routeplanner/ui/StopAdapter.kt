@@ -139,7 +139,7 @@ class StopAdapter(private val ctx: Context, private val host: RouteHost) : Recyc
         h.root.alpha = if (finished) 0.6f else 1f
         h.root.background = if (r.current) ctx.roundRect(M.attr.colorSecondaryContainer, 16) else null
         h.handle.visibility = if (finished) android.view.View.INVISIBLE else android.view.View.VISIBLE
-        h.root.contentDescription = "Stop ${s.optimizedIndex}, ${s.address}, ${s.status.name.lowercase()}"
+        h.root.contentDescription = "Stop ${s.optimizedIndex}, ID ${s.entryNo}, ${s.address}, ${s.status.name.lowercase()}"
         h.root.setOnClickListener { host.openStop(s.id) }
     }
 

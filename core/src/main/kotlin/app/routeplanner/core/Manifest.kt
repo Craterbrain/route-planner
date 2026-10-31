@@ -99,6 +99,7 @@ fun importManifest(
             val target = LatLng(lat!!, lng!!)
             Stop(
                 id = UUID.randomUUID().toString(),
+                entryNo = stops.size + 1, // address ID: file order
                 address = address,
                 target = target,
                 access = memory?.access(address) ?: target,

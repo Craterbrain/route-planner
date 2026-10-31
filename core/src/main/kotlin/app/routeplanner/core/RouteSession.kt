@@ -23,6 +23,15 @@ class RouteSession(
     var cursor: Int = stops.indexOfFirst { it.status == Status.PENDING }.coerceAtLeast(0)
         private set
 
+    /** Highest address ID handed out so far (IDs are never reused, even after a removal). */
+    private var entrySeq = 0
+
+    init {
+        // Routes from before address IDs existed get them now, in their current order.
+        entrySeq = this.stops.maxOfOrNull { it.entryNo } ?: 0
+        if (this.stops.any { it.entryNo == 0 }) this.stops = this.stops.map { if (it.entryNo == 0) it.copy(entryNo = ++entrySeq) else it }
+    }
+
     /** Epoch millis of route-clock zero. */
     var startMs: Long = startMs ?: now()
 
@@ -244,7 +253,7 @@ class RouteSession(
     /** A stop at this address that is still to be done, if any (spacing and case ignored). */
     fun pendingStopAt(address: String): Stop? {
         val key = normalizeAddress(address)
-        return stops.firstOrNull { it.status == Status.PENDING && normalizeAddress(it.address) == key }
+        return stops.firstOrNull { it.status == Status.PENDING && (normalizeAddress(it.address) == key || AddressMatch.same(it.address, address)) }
     }
 
     /** Package finder lookup by scanned code: the package and the stop it belongs to. */
@@ -255,12 +264,25 @@ class RouteSession(
     }
 
     /** Appends a stop without re-planning (Circuit adds, then you optimize or update). */
-    fun addStop(stop: Stop, newPackages: List<Pkg> = emptyList()) {
+    fun addStop(stop0: Stop, newPackages: List<Pkg> = emptyList()): Stop {
         val hadPending = stops.any { it.status == Status.PENDING }
+        // The next address ID, unless the caller brought a free one (an import numbers rows in file order).
+        val stop = if (stop0.entryNo > 0 && stops.none { it.entryNo == stop0.entryNo }) stop0 else stop0.copy(entryNo = entrySeq + 1)
+        entrySeq = maxOf(entrySeq, stop.entryNo)
         stops = renumber(stops + stop)
-        packages = packages + newPackages
+        // Every address holds at least one package; a typed/scanned address gets "<ID>-1".
+        packages = packages + newPackages + listOfNotNull(Pkg("${stop.entryNo}-1", stop.id).takeIf { newPackages.none { p -> p.stopId == stop.id } })
         if (!hadPending) cursor = stops.size - 1
         dirty = true
+        return stop
+    }
+
+    /** Another parcel for the same address: package "<ID>-<n>" on [stopId]. */
+    fun addPackageTo(stopId: String): Pkg? {
+        val st = indexOf(stopId)?.let { stops[it] } ?: return null
+        var n = packages.count { it.stopId == stopId } + 1
+        while (packages.any { it.id == "${st.entryNo}-$n" }) n++
+        return Pkg("${st.entryNo}-$n", stopId).also { packages = packages + it }
     }
 
     // ---- Re-planning -------------------------------------------------------

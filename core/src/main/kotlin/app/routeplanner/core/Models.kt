@@ -39,6 +39,11 @@ data class Stop(
     val proofPhoto: String? = null,
     /** Recipient signature: path of a PNG. */
     val proofSignature: String? = null,
+    /**
+     * The address's ID number: 1, 2, 3... in the order addresses were put into the app. Never changes when the route
+     * is re-optimized or reordered, and is not reused after a stop is removed. 0 = not yet assigned.
+     */
+    val entryNo: Int = 0,
     /** Position is estimated (interpolated / street-level / approximate geocode): suggest adjusting the pin. */
     val approximate: Boolean = false,
 ) {

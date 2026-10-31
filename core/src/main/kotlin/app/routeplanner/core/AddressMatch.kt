@@ -12,18 +12,37 @@ object AddressMatch {
     private val UNIT_WORDS = setOf("apt", "apartment", "unit", "ste", "suite", "lot", "bldg", "rm", "room", "#")
     private val ZIP = Regex("""\b(\d{5})(?:-\d{4})?\b""")
 
-    private class Parts(val number: String, val street: Set<String>, val zip: String?)
+    private class Parts(val number: String, val street: Set<String>, val zip: String?, val unit: String)
 
     private fun parts(text: String): Parts? {
         val streetPart = text.substringBefore(',').replace("#", " # ")
         val words = streetPart.split(' ', '\t').filter { it.isNotEmpty() }
         if (words.size < 2 || !words[0].first().isDigit()) return null
         var end = words.size
-        for (i in 1 until words.size) if (words[i].lowercase().trim('.') in UNIT_WORDS) { end = i; break }
+        var unit = ""
+        for (i in 1 until words.size) if (words[i].lowercase().trim('.') in UNIT_WORDS) {
+            end = i
+            unit = words.drop(i + 1).joinToString("").lowercase().filter { it.isLetterOrDigit() }
+            break
+        }
         val number = words[0].lowercase().trimEnd(',', '.')
         val tokens = AddrNorm.normalizeStreet(words.subList(1, end).joinToString(" ")).split(' ').filter { it.isNotEmpty() && it !in AddrNorm.DIRS }
         if (tokens.isEmpty()) return null
-        return Parts(number, tokens.toSet(), ZIP.findAll(text).lastOrNull()?.groupValues?.get(1))
+        return Parts(number, tokens.toSet(), ZIP.findAll(text).lastOrNull()?.groupValues?.get(1), unit)
+    }
+
+    /**
+     * Are two address strings the same place, whatever their spelling or format? Same house number, same road,
+     * ZIPs that don't disagree, and units (Apt 4) that don't disagree. Used to notice a second parcel for an
+     * address already on the route.
+     */
+    fun same(a: String, b: String): Boolean {
+        val x = parts(a) ?: return false
+        val y = parts(b) ?: return false
+        if (x.number != y.number || x.street != y.street) return false
+        if (x.zip != null && y.zip != null && x.zip != y.zip) return false
+        if (x.unit.isNotEmpty() && y.unit.isNotEmpty() && x.unit != y.unit) return false
+        return true
     }
 
     fun matches(typed: String, found: Suggestion): Boolean {

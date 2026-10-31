@@ -149,3 +149,6 @@ fun Context.windowLabel(s: RouteSession, w: LongRange): String {
 /** Sentinels for a one-sided window ("10am and Anytime" in Circuit's terms). */
 const val WINDOW_OPEN_START = -10_000_000L
 const val WINDOW_OPEN_END = 10_000_000L
+
+/** "Total packages: 2". Every address holds at least one package. */
+fun totalPackages(n: Int) = "Total packages: $n"
