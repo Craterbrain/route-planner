@@ -272,6 +272,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
             menu.add(0, 6, 0, "Floating button").apply { isCheckable = true; isChecked = OverlayService.running }
             menu.add(0, 9, 0, "Permissions & network")
             menu.add(0, 7, 0, "Settings")
+            if (s != null && s.stops.isNotEmpty()) menu.add(0, 13, 0, "Share route…")
             if (s != null && s.stops.any { it.status != Status.PENDING }) menu.add(0, 10, 0, "Export delivery report")
             if (s != null) menu.add(0, 8, 0, "Clear route")
             setOnMenuItemClickListener {
@@ -287,6 +288,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
                     9 -> showPermissions()
                     10 -> SessionStore.session?.let { ProofExport.share(this@MainActivity, it.stops, it.packages, ::snack) }
                     11 -> scanLabel()
+                    13 -> shareRoute()
                     12 -> startActivityForResult(Intent(this@MainActivity, ScanActivity::class.java).putExtra(ScanActivity.EXTRA_MODE, ScanActivity.MODE_FIND), REQ_SCAN_FIND)
                 }
                 true
@@ -303,6 +305,20 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
 
     private fun handleIntent(i: Intent) {
         if (i.action == ACTION_FAIL) SessionStore.session?.current?.let { fail(it.id) }
+        // A CSV shared or opened from another app (a route from another phone, or an address list).
+        RouteSharing.uriFrom(i)?.let { uri -> setIntent(Intent()); actions.importRouteFile(uri) }
+    }
+
+    /** ⋮ → Share route…: a CSV through the share sheet. With finished stops, asks whether to send only what is left. */
+    private fun shareRoute() {
+        val s = SessionStore.session ?: return
+        val done = s.stops.any { it.status != Status.PENDING }
+        val pending = s.stops.any { it.status == Status.PENDING }
+        if (!done) { RouteSharing.share(this, s, includeFinished = false); return }
+        if (!pending) { RouteSharing.share(this, s, includeFinished = true); return }
+        MaterialAlertDialogBuilder(this).setTitle("Share route")
+            .setItems(arrayOf("Remaining stops (hand off)", "All stops")) { _, i -> RouteSharing.share(this, s, includeFinished = i == 1) }
+            .setNegativeButton("Cancel", null).show()
     }
 
     override fun onStart() {
@@ -820,7 +836,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         @Suppress("DEPRECATION") super.onActivityResult(req, res, data)
         if (res != RESULT_OK) return
         when (req) {
-            REQ_IMPORT -> data?.data?.let { actions.importCsv(it) }
+            REQ_IMPORT -> data?.data?.let { actions.importRouteFile(it) }
             REQ_TILES -> data?.data?.let { actions.importTiles(it) }
             REQ_ADDRESSES -> data?.data?.let { actions.importAddressPack(it) { } }
             REQ_VOICE -> data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let {

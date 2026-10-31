@@ -282,6 +282,45 @@ class RouteSession(
         return stop
     }
 
+    /** What [importShared] did. */
+    class Imported(val added: Int, val merged: Int, val packagesAdded: Int)
+
+    /**
+     * Adds a route received from another phone. A stop whose address is already pending here is not duplicated: its
+     * packages are added to the existing stop (unless that parcel's code is already here). Other stops are added with
+     * their own address ID when it is free here, else the next one; packages keep a custom id (a tracking number) when
+     * it is free, and the automatic "<ID>-<n>" ids follow this phone's numbering. Marks the route dirty: re-plan after.
+     */
+    fun importShared(shared: RouteShare.Shared): Imported {
+        var added = 0; var merged = 0; var pkgCount = 0
+        val auto = Regex("""\d+-\d+""")
+        for (incoming in shared.stops) {
+            val pkgs = shared.packages.filter { it.stopId == incoming.id }
+            val existing = pendingStopAt(incoming.address)
+            if (existing != null) {
+                var any = false
+                for (p in pkgs) {
+                    val long = p.codes.filter { Barcodes.clean(it).length >= Barcodes.LONG } + listOf(p.id).filter { !auto.matches(it) }
+                    if (long.isNotEmpty() && Barcodes.find(packages, long)?.certain == true) continue // that parcel is already here
+                    val made = addPackageTo(existing.id, p.codes)
+                    if (made != null) { setZone(made.id, p.truckZone); pkgCount++; any = true }
+                }
+                if (any || pkgs.isEmpty()) merged++
+                continue
+            }
+            val custom = pkgs.filter { !auto.matches(it.id) && packages.none { q -> q.id == it.id } }
+                .map { Pkg(it.id, incoming.id, it.truckZone, codes = it.codes) }
+            val autoPkgs = pkgs.filter { p -> custom.none { it.id == p.id } }
+            val st = addStop(incoming, custom, codes = if (custom.isEmpty()) autoPkgs.firstOrNull()?.codes.orEmpty() else emptyList())
+            if (custom.isEmpty() && autoPkgs.isNotEmpty()) setZone("${st.entryNo}-1", autoPkgs[0].truckZone)
+            for (a in if (custom.isEmpty()) autoPkgs.drop(1) else autoPkgs) addPackageTo(st.id, a.codes)?.let { setZone(it.id, a.truckZone) }
+            added++
+            pkgCount += maxOf(1, pkgs.size)
+        }
+        dirty = true
+        return Imported(added, merged, pkgCount)
+    }
+
     /** Another parcel for the same address: package "<ID>-<n>" on [stopId]. */
     fun addPackageTo(stopId: String, codes: List<String> = emptyList()): Pkg? {
         val st = indexOf(stopId)?.let { stops[it] } ?: return null

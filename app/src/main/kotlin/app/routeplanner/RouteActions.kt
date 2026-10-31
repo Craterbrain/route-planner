@@ -218,6 +218,49 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
         return stop.id
     }
 
+    /**
+     * A CSV from the file picker, a share or an "open with": a route with positions (from another phone running this app,
+     * or exported from a spreadsheet with lat/lng) is imported as-is after asking how; a plain address list goes through
+     * the normal import (look the addresses up, plan a new route).
+     */
+    fun importRouteFile(uri: Uri) {
+        background({
+            val text = RouteSharing.read(act, uri)
+            if (RouteShare.looksShared(text)) RouteShare.decode(text, LocalTime.now().toSecondOfDay().toLong()) else null
+        }) { r ->
+            r.onFailure { alert("Couldn't open the file", it.message ?: "The file can't be read.") }
+            r.onSuccess { shared -> if (shared != null) askHowToImport(shared) else importCsv(uri) }
+        }
+    }
+
+    private fun askHowToImport(shared: RouteShare.Shared) {
+        if (!alive) return
+        val pkgs = shared.packages.size
+        val what = "${shared.stops.size} stop" + (if (shared.stops.size == 1) "" else "s") + ", $pkgs package" + (if (pkgs == 1) "" else "s") +
+            (if (shared.skipped > 0) "\n(${shared.skipped} unreadable entr${if (shared.skipped == 1) "y was" else "ies were"} left out.)" else "") +
+            "\n\nStops keep their positions, so no address lookup is needed."
+        val current = SessionStore.session?.takeIf { it.stops.isNotEmpty() }
+        val b = MaterialAlertDialogBuilder(act).setTitle("Import this route?").setNegativeButton("Cancel", null)
+        if (current == null) b.setMessage(what).setPositiveButton("Import") { _, _ -> applyImport(shared, replace = false) }
+        else b.setMessage("$what\n\nYou already have a route open.")
+            .setPositiveButton("Add to my route") { _, _ -> applyImport(shared, replace = false) }
+            .setNeutralButton("Replace my route") { _, _ -> applyImport(shared, replace = true) }
+        b.show()
+    }
+
+    private fun applyImport(shared: RouteShare.Shared, replace: Boolean) {
+        val open = SessionStore.session
+        val target = if (open == null || replace) newSession(emptyList(), emptyList()).also { SessionStore.set(act, it) } else open
+        val r = target.importShared(shared)
+        SessionStore.commit(act)
+        replan(optimize = false, showBusy = false)
+        val bits = listOfNotNull(
+            "${r.added} stop" + (if (r.added == 1) "" else "s") + " added",
+            r.merged.takeIf { it > 0 }?.let { "$it merged into existing stops" },
+        )
+        ui.snack(bits.joinToString(" · "), if (r.added > 0) "Optimize" else null) { replan(optimize = true, showBusy = true) }
+    }
+
     /** Imports an offline address pack (addresses.sqlite) after validating it. */
     fun importAddressPack(uri: Uri, done: () -> Unit) {
         val dlg = busy("Importing address data…", "Checking the file")

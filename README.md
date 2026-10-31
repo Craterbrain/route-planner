@@ -23,7 +23,7 @@ J=-Dorg.gradle.java.home=$HOME/.gradle/jdks/eclipse_adoptium-17-amd64-linux.2
 # APK: app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Manifest CSV columns: `address,lat,lng,package,zone,priority,window_start,window_end,service_min,notes`
+Manifest CSV columns: `address,lat,lng,package,zone,priority,window_start,window_end,service_min,notes` (a shared route adds `access_lat,access_lng,id,codes,approximate`)
 (example: `prototype/examples/manifest.csv`). `priority`: `yes`/`first` = visit first, `last` = visit last, blank = optimizer decides.
 
 ## The app (Circuit-style flow)
@@ -82,6 +82,8 @@ An imported address pack (`addresses.sqlite`, one US state, built by `tools/buil
 Without network the route list, stop editing, delivery/proof, the floating button and on-device Valhalla road times all work. The map falls back to pins on a plain background. With an imported address pack, typed addresses and spreadsheet rows still resolve offline; without one the search bar says it needs network (long-press the map or import a CSV with lat/lng instead).
 
 ## Not yet verified on a device
+
+**0.8.0**: **Share a route from phone to phone.** ⋮ → **Share route…** writes a CSV (the format the app already imports, so it also opens in any spreadsheet) and opens the system share sheet: Quick Share, Bluetooth, Signal, mail, whatever both phones have. No account, server or internet is needed. By default it sends only the stops still to do (a hand-off); with finished stops it asks whether to send all of them. One row per package: `address, lat, lng, access_lat, access_lng, id, package, zone, codes, priority, window_start, window_end, service_min, notes, approximate`. Every row carries its coordinates, so the receiver does no address lookup. The receiving phone offers Route Planner for the CSV (share sheet or "open with"), or use ⋮ → Import spreadsheet. A CSV with `lat`/`lng` columns is treated as a route: with no route open it imports; with one open it asks **Add to my route** (stops at an address you already have are merged into it, and a parcel whose barcode is already here isn't duplicated; address IDs are kept when free, else renumbered) or **Replace my route**. A plain address list still goes through the lookup-and-plan import. Not shared: the sender's start/end (the receiver has their own), delivery status, proof photos and signatures. The file contains addresses, notes and recipient names, so it is only as private as the channel you send it over.
 
 **0.7.8**: architecture/performance pass (see docs/architecture.md): faster allocation-free solver with a 3 s search cap, route saves off the main thread, map label bitmaps no longer accumulate, local-suggestion data cached, lint clean, report export and offline-map screens moved out of `MainActivity`, and `-Pabis=arm64-v8a` for a 48 MB build. No behaviour changes intended; since nothing here could be run on a device, re-check the basics (add stops, optimize, deliver, close and reopen the app to confirm the route is restored).
 

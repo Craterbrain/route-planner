@@ -52,7 +52,9 @@ private fun toSec(s: String): Long? =
 /**
  * Columns (header row required): address, lat, lng, package, zone, priority,
  * window_start, window_end, service_min, notes. Window times are HH:MM wall
- * clock, made route-relative by [dayStartSec]. Rows sharing an address merge
+ * clock, made route-relative by [dayStartSec]. A route shared from another phone also carries `id` (address ID),
+ * `access_lat`/`access_lng` (drop-off point), `approximate` and `codes` (scanned barcodes, `;`-separated; one
+ * row per package). Rows sharing an address merge
  * into one stop with several packages. `priority` may be yes/first or last. Rows without lat/lng are resolved with
  * [geocoder] when given. A remembered drop-off in [memory] becomes the stop's
  * access point.
@@ -70,6 +72,7 @@ fun importManifest(
     val warnings = ArrayList<String>()
     val stops = LinkedHashMap<String, Stop>()
     val packages = ArrayList<Pkg>()
+    val usedIds = HashSet<Int>()
     for ((n, r) in rows.drop(1).withIndex()) {
         fun get(k: String) = col[k]?.let { r.getOrNull(it) }?.trim().orEmpty()
         val address = get("address")
@@ -97,21 +100,28 @@ fun importManifest(
             val ws = toSec(get("window_start"))
             val we = toSec(get("window_end"))
             val target = LatLng(lat!!, lng!!)
+            // Address ID: the file's `id` when it is a free positive number, else the next free one in file order.
+            var entryNo = get("id").toIntOrNull()?.takeIf { it > 0 && it !in usedIds } ?: (stops.size + 1)
+            while (entryNo in usedIds) entryNo++
+            usedIds += entryNo
+            val aLat = get("access_lat").toDoubleOrNull(); val aLng = get("access_lng").toDoubleOrNull()
+            val fileAccess = if (aLat != null && aLng != null && aLat in -90.0..90.0 && aLng in -180.0..180.0) LatLng(aLat, aLng) else null
             Stop(
                 id = UUID.randomUUID().toString(),
-                entryNo = stops.size + 1, // address ID: file order
+                entryNo = entryNo,
                 address = address,
                 target = target,
-                access = memory?.access(address) ?: target,
+                access = memory?.access(address) ?: fileAccess ?: target,
                 serviceSec = ((get("service_min").toDoubleOrNull() ?: 2.0) * 60).toInt(),
                 placement = placement,
                 window = if (ws != null && we != null) (ws - dayStartSec)..(we - dayStartSec) else null,
                 notes = get("notes"),
-                approximate = approximate && memory?.access(address) == null,
+                approximate = (approximate || TRUTHY.matches(get("approximate"))) && memory?.access(address) == null,
             ).also { stops[key] = it }
         } else if (placement != Placement.AUTO && existing.placement == Placement.AUTO) existing.copy(placement = placement).also { stops[key] = it }
         else existing
-        packages += Pkg(get("package").ifEmpty { UUID.randomUUID().toString() }, stop.id, get("zone").ifEmpty { null })
+        packages += Pkg(get("package").ifEmpty { UUID.randomUUID().toString() }, stop.id, get("zone").ifEmpty { null },
+            codes = get("codes").split(';').map { it.trim() }.filter { it.isNotEmpty() }.take(12))
     }
     return Manifest(stops.values.toList(), packages, errors, warnings)
 }
