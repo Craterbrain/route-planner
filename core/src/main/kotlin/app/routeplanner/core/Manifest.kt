@@ -33,7 +33,8 @@ fun parseCsv(text: String): List<List<String>> {
     return rows
 }
 
-class Manifest(val stops: List<Stop>, val packages: List<Pkg>, val errors: List<String>)
+/** [warnings]: rows imported with an estimated position (adjust the pin). */
+class Manifest(val stops: List<Stop>, val packages: List<Pkg>, val errors: List<String>, val warnings: List<String> = emptyList())
 
 private val TRUTHY = Regex("^(1|true|yes|y|first)$", RegexOption.IGNORE_CASE)
 
@@ -66,6 +67,7 @@ fun importManifest(
     val header = rows.firstOrNull() ?: return Manifest(emptyList(), emptyList(), listOf("empty manifest"))
     val col = header.withIndex().associate { (i, h) -> h.trim().lowercase() to i }
     val errors = ArrayList<String>()
+    val warnings = ArrayList<String>()
     val stops = LinkedHashMap<String, Stop>()
     val packages = ArrayList<Pkg>()
     for ((n, r) in rows.drop(1).withIndex()) {
@@ -75,11 +77,17 @@ fun importManifest(
         val key = normalizeAddress(address)
         var lat = get("lat").toDoubleOrNull()
         var lng = get("lng").toDoubleOrNull()
+        var approximate = false
         if ((lat == null || lng == null) && key !in stops) {
-            val hit = geocoder?.let { runCatching { it.geocode(address) }.getOrNull() }
+            val detailed = (geocoder as? DetailedGeocoder)?.let { runCatching { it.lookup(address) }.getOrNull() }
+            val hit = detailed?.point ?: if (geocoder !is DetailedGeocoder) geocoder?.let { runCatching { it.geocode(address) }.getOrNull() } else null
             if (hit == null) {
                 errors += "row ${n + 2}: no coordinates" + if (geocoder != null) " and geocoding failed" else " (needs lat/lng)"
                 continue
+            }
+            if (detailed?.approximate == true) {
+                approximate = true
+                warnings += "row ${n + 2}: estimated position for “$address” (${detailed.source.caption}); adjust the pin"
             }
             lat = hit.lat; lng = hit.lng
         }
@@ -98,10 +106,11 @@ fun importManifest(
                 placement = placement,
                 window = if (ws != null && we != null) (ws - dayStartSec)..(we - dayStartSec) else null,
                 notes = get("notes"),
+                approximate = approximate && memory?.access(address) == null,
             ).also { stops[key] = it }
         } else if (placement != Placement.AUTO && existing.placement == Placement.AUTO) existing.copy(placement = placement).also { stops[key] = it }
         else existing
         packages += Pkg(get("package").ifEmpty { UUID.randomUUID().toString() }, stop.id, get("zone").ifEmpty { null })
     }
-    return Manifest(stops.values.toList(), packages, errors)
+    return Manifest(stops.values.toList(), packages, errors, warnings)
 }

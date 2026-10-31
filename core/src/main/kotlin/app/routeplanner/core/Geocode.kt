@@ -5,6 +5,12 @@ fun interface Geocoder {
     fun geocode(address: String): LatLng?
 }
 
+/** A geocoder that also says how good the position is (exact house vs estimated). */
+fun interface DetailedGeocoder : Geocoder {
+    fun lookup(address: String): Suggestion?
+    override fun geocode(address: String): LatLng? = lookup(address)?.point
+}
+
 /**
  * Remembers where drivers actually drop off, per normalized address. Checked
  * before geocoding so corrections survive across routes.

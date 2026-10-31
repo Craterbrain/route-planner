@@ -27,8 +27,21 @@ object UrlGet : HttpGet {
     }
 }
 
-/** A search-bar suggestion: display label (one or two lines) and position. */
-data class Suggestion(val label: String, val point: LatLng, val line1: String = label, val line2: String = "")
+/** HttpGet with explicit timeouts (address search wants short ones). */
+class TimedGet(private val connectMs: Int, private val readMs: Int) : HttpGet {
+    override fun get(url: String, headers: Map<String, String>): String {
+        val c = URL(url).openConnection() as HttpURLConnection
+        try {
+            c.connectTimeout = connectMs
+            c.readTimeout = readMs
+            headers.forEach { (k, v) -> c.setRequestProperty(k, v) }
+            if (c.responseCode !in 200..299) throw HttpStatusException(c.responseCode)
+            return c.inputStream.bufferedReader().use { it.readText() }
+        } finally {
+            c.disconnect()
+        }
+    }
+}
 
 /**
  * Photon (https://photon.komoot.io, OSM data, no key) address search. Needs
@@ -42,7 +55,11 @@ class PhotonGeocoder(
     private val userAgent: String = "app.routeplanner (Android delivery route planner)",
     private val lang: String = "en",
     private val bias: () -> LatLng? = { null },
-) : Geocoder {
+) : Geocoder, SuggestionProvider {
+    override val source = SuggestSource.OSM
+
+    override fun suggest(query: String, near: LatLng?, limit: Int): List<Suggestion> = search(query, limit, near ?: bias())
+
     private val base = baseUrl.trim().trimEnd('/').ifEmpty { DEFAULT_URL }
 
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
@@ -71,6 +88,9 @@ class PhotonGeocoder(
         /** Fewer characters than this never hit the server (fair use of the public instance). */
         const val MIN_CHARS = 3
 
+        /** Photon result types that are not a single house. */
+        private val APPROX_TYPES = setOf("street", "city", "district", "county", "state", "country", "locality", "postcode", "other")
+
         /** Parses a Photon GeoJSON FeatureCollection into suggestions. */
         fun parse(json: String): List<Suggestion> {
             val root = Json.parse(json) as? Map<*, *> ?: return emptyList()
@@ -83,7 +103,8 @@ class PhotonGeocoder(
                 val p = f["properties"] as? Map<*, *> ?: emptyMap<String, Any?>()
                 val (l1, l2) = format(p)
                 if (l1.isEmpty()) return@mapNotNull null
-                Suggestion(listOf(l1, l2).filter { it.isNotEmpty() }.joinToString(", "), LatLng(lat, lng), l1, l2)
+                val approx = (p["type"] as? String) in APPROX_TYPES
+                Suggestion(l1, l2, LatLng(lat, lng), SuggestSource.OSM, approx)
             }
         }
 

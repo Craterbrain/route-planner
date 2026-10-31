@@ -5,6 +5,21 @@ package app.routeplanner.core
  * Returns Map<String, Any?>, List<Any?>, Double, String, Boolean or null.
  */
 object Json {
+    /** JSON string literal for [s] (quotes, backslashes and control characters escaped). */
+    fun quote(s: String): String = buildString {
+        append('"')
+        for (c in s) when {
+            c == '"' -> append("\\\"")
+            c == '\\' -> append("\\\\")
+            c == '\n' -> append("\\n")
+            c == '\r' -> append("\\r")
+            c == '\t' -> append("\\t")
+            c < ' ' -> append("\\u%04x".format(c.code))
+            else -> append(c)
+        }
+        append('"')
+    }
+
     fun parse(text: String): Any? = Reader(text).run { skip(); value().also { skip(); check(i == s.length) { "trailing data at $i" } } }
 
     private class Reader(val s: String) {

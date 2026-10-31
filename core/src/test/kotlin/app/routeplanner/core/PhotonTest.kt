@@ -12,8 +12,8 @@ class PhotonTest {
         assertEquals("1223 East Main Street", r[0].line1)
         assertEquals("Canton, Georgia 30114", r[0].line2)
         assertEquals("1223 East Main Street, Canton, Georgia 30114", r[0].label)
-        assertEquals(34.236086, r[0].point.lat, 1e-5)
-        assertEquals(-84.476010, r[0].point.lng, 1e-5)
+        assertEquals(34.236086, r[0].point!!.lat, 1e-5)
+        assertEquals(-84.476010, r[0].point!!.lng, 1e-5)
     }
 
     @Test fun formatsNamedPlaceAndSkipsBadFeatures() {
