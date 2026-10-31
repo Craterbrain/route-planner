@@ -247,8 +247,11 @@ class ScanActivity : AppCompatActivity() {
             null -> results.addFull(label(14f, M.attr.colorOnSurfaceVariant).apply { text = "Point at a barcode on the parcel in your hand…" })
             is Check.Miss -> {
                 results.addFull(label(18f, M.attr.colorError, bold = true).apply { text = "✗ Not on this route" })
+                // Packages added without a readable barcode (auto ids like "7-1") can't be matched this way.
+                val uncoded = session?.packages?.count { it.codes.isEmpty() && Regex("""\d+-\d+""").matches(it.id) } ?: 0
                 results.addFull(label(13f, M.attr.colorOnSurfaceVariant).apply {
-                    text = "${c.codes} barcode" + (if (c.codes > 1) "s" else "") + " read and none matches a package you added. Try another barcode on the label."
+                    text = "${c.codes} barcode" + (if (c.codes > 1) "s" else "") + " read and none matches a package you added. Try another barcode on the label." +
+                        if (uncoded > 0) "\n$uncoded package" + (if (uncoded > 1) "s were" else " was") + " added without a barcode, so this check can't recognise " + (if (uncoded > 1) "them." else "it.") else ""
                 }, topDp = 4)
             }
             is Check.Hit -> {
