@@ -6,8 +6,8 @@ A Circuit-style delivery route optimizer, targeting **Android**. Design brief: [
 
 | Path | What |
 |---|---|
-| `core/` | Pure-Kotlin/JVM engine (no Android deps): manifest import, solver (first/last, windows, route clock), route state machine and edits (move, make next, reverse, remove), route summary, nav deep links. JUnit tests. |
-| `app/` | Android app (Kotlin, platform Views + Material 3; deps: `core-ktx`, `material`, `valhalla-mobile`, `maplibre`). `MainActivity` (screen wiring), `RouteActions` (import / add / optimize off the UI thread), `SessionStore`, `Prefs`, `Routing`, `OverlayService`; `ui/`: `RouteMap` (MapLibre pins), `RouteSheet` + `StopAdapter` (bottom sheet, next-stop card, swipe/drag list), `StopDetailSheet`, `Dialogs`, `Ui` helpers. |
+| `core/` | Pure-Kotlin/JVM engine (no Android deps): manifest import, solver (first/last, windows, route clock), route state machine and edits (move, make next, reverse, remove), route summary, Photon geocoder, nav deep links. JUnit tests. |
+| `app/` | Android app (Kotlin, platform Views + Material 3; deps: `core-ktx`, `material`, `valhalla-mobile`, `maplibre`). `MainActivity` (screen wiring), `RouteActions` (import / add / optimize off the UI thread), `AddressSearch` (geocoder chain), `NetStatus` (reachability), `SessionStore`, `Prefs`, `Routing`, `OverlayService` (floating button); `ui/`: `RouteMap` (MapLibre pins + diagnostics), `SearchPanel` (suggestions), `RouteSheet` + `StopAdapter` (bottom sheet, next-stop card, swipe/drag list), `StopDetailSheet`, `PermissionsSheet`, `Dialogs`, `Ui` helpers. |
 | `tools/` | `build-tiles.sh`: builds the on-device routing data from an OSM extract (Docker/Podman). |
 | `prototype/` | Original zero-dep Node version of the core, kept as a reference. |
 
@@ -26,7 +26,10 @@ Manifest CSV columns: `address,lat,lng,package,zone,priority,window_start,window
 
 ## The app (Circuit-style flow)
 
-- **Route screen:** full-screen map with numbered stop pins (current stop larger, in the tertiary color; delivered dimmed with ✓; failed in red with !) and a dashed line through the remaining stops in order. A floating search bar at the top adds stops (type an address, or use the mic). Its ⋮ menu has Import spreadsheet, Optimize, Update times, Reverse, Show whole route, Floating action bar, Settings and Clear route. Long-press the map to drop a stop or move the current stop's drop-off pin.
+- **Route screen:** full-screen map with numbered stop pins (current stop larger, in the tertiary color; delivered dimmed with ✓; failed in red with !) and a dashed line through the remaining stops in order. Pins are drawn as bitmaps, so they show even when the basemap can't load (then the map is a plain themed background). A small **map status chip** under the search bar says what the map is doing ("loading basemap…", "style loaded · tiles ok", "no network access · pins only · tap to retry", "N tile errors"); MapLibre and network problems are also logged under the logcat tag `RoutePlanner`.
+- **Search bar:** suggestions appear under it as you type (400 ms debounce, 3+ characters, stale lookups dropped). Lookup chain: the phone's geocoder if it has one and it answers, else **Photon** (OpenStreetMap, no key; URL configurable in Settings). No results or no network say so ("No matches", "Couldn't reach address search", "No network access…"). The mic fills the bar by voice. The ⋮ menu has Import spreadsheet, Optimize, Update times, Reverse, Show whole route, Floating button (on/off), Permissions & network, Settings and Clear route. Long-press the map to drop a stop or move the current stop's drop-off pin.
+- **Floating button (overlay):** a round button over Google Maps / Waze; drag it (it snaps to the nearest edge, position remembered), tap to expand: current stop, ◄ (previous stop, set back to pending) ✓ Delivered ✗ Failed ► Next, Open app, Close. It collapses after Delivered/Failed/Open app, hides while Route Planner itself is on screen, and its notification has a Stop action.
+- **Permissions & network sheet:** shown on first launch and from ⋮ or Settings. One row each for Network (actually tests the map and geocoder hosts; explains GrapheneOS's per-app Network toggle with a button to App info), Location, Notifications (Android 13+), Display over other apps (opens the system screen; the floating button starts only once it's granted), and optional battery-optimization exemption. Re-checked every time the app resumes; nothing blocks the app.
 - **Bottom sheet:** empty state (import / add); planning (stop count, time, distance, "done by", late warning, **Optimize** and **Start route**); driving (a next-stop card with ETA, address, first/last and window, notes, **package finder**, **Navigate**, **Failed** / **Proof** / **Delivered**, and ◄ ► to browse without changing anything); finished (summary + new route). Below it is the stop list: swipe left = Delivered (Undo on finished stops), swipe right = Navigate, drag the handle to reorder, tap for details.
 - **Stop details:** Navigate / Failed / Delivered (or Undo); proof shown after delivery; Order First/Auto/Last; arrival time (after / before / anytime); time at stop; notes; per-package truck location (Front/Middle/Back · Left/Right · Floor/Shelf + text); "Adjust pin on map" (saved per address); Make next, Move to position, Work on this stop now, Remove.
 - **Times:** every route has a clock (`RouteSession.startMs`). Imported HH:MM windows are relative to import time; re-planning mid-route keeps windows meaningful. Edits re-compute ETAs in place; Optimize re-orders the remaining stops from your location.
@@ -35,7 +38,7 @@ Manifest CSV columns: `address,lat,lng,package,zone,priority,window_start,window
 
 | Idea point | Status |
 |---|---|
-| 1. Door target + street access point; geocoding; driver pin adjust | Platform `Geocoder` fills missing coordinates on import and powers the search bar (none on de-Googled phones: then long-press the map or import lat/lng). Drop-off pins: **Adjust pin on map** or long-press → saved in `AddressMemory` and applied on future imports/adds. |
+| 1. Door target + street access point; geocoding; driver pin adjust | Geocoding chain platform `Geocoder` → Photon for the search bar, long-press reverse lookup and CSV import. Drop-off pins: **Adjust pin on map** or long-press → saved in `AddressMemory` and applied on future imports/adds. |
 | 2. Map (MapLibre, offline tiles) | MapLibre map with OpenFreeMap tiles (ambient cache only). Offline region download not started. Map can be turned off in Settings. |
 | 3. VRPTW | single vehicle: First/Auto/Last, windows (incl. one-sided), service time, ETAs, distances. Road times: on-device Valhalla (import tiles in Settings) → optional server → straight-line fallback |
 | 4. Packages, truck zones, indexes, CSV import | done; truck zone editable per package; barcode/OCR scanner not started |
@@ -44,16 +47,46 @@ Manifest CSV columns: `address,lat,lng,package,zone,priority,window_start,window
 | Live injection | add stop any time (search, voice, long-press): appended with fresh ETAs, then **Optimize** from the snackbar or menu |
 | Proof of delivery | **Proof** button / long-press **Delivered**: note + photo (system camera app, stored in app files via `FileProvider`), shown in stop details. Signature not yet |
 
+## Privacy
+
+- **Address search:** when the phone has no geocoder of its own (or it returns nothing), what you type in the search bar (3+ characters, after a 400 ms pause), CSV addresses without coordinates, and long-pressed map points are sent to the Photon server: the public instance at photon.komoot.io unless you set your own in Settings. Requests carry a descriptive User-Agent and a location bias (your last known position or the route's centre), but no account or ID.
+- **Map tiles:** fetched from tiles.openfreemap.org (which reveals the map area you view).
+- Everything else (route, proof photos, pins) stays on the phone.
+
+## Offline behaviour
+
+Without network the route list, stop editing, delivery/proof, the floating button and on-device Valhalla road times all work. The map falls back to pins on a plain background, and the search bar says it needs network (long-press the map or import a CSV with lat/lng instead).
+
 ## Not yet verified on a device
 
-The APK builds and the core tests pass, but **nothing has been run on a phone or emulator** (none was available). Check first:
+**0.4.0 status:** the 0.3.0 build ran on the user's phone (GrapheneOS-style, no Play services) and showed: no address suggestions, a blank beige map, the overlay bar over the app, a stuck "Undo" strip and a wrapped "Failed" button. 0.4.0 addresses each (see the commit log); **0.4.0 itself has not been run on hardware**.
 
-- Map: MapLibre (OpenGL ES build) starting, OpenFreeMap positron/dark styles loading, pin taps opening stop details, long-press, the pick-a-drop-off-point flow, attribution placement under the search bar, and the "map couldn't load" notice when offline.
+Blank map, best-supported cause: the beige was MapLibre's default "foreground load color", drawn over the whole MapView (attribution included) until the first frame renders. It never went away. The stop on screen has a full street address, which suggests it was added by long-press, so the map object probably existed but the style never finished loading. MapLibre feeds Android's `getActiveNetworkInfo().isConnected()` into its file source, and when that says "offline" it **waits silently** for connectivity rather than reporting an error. A per-app network block (GrapheneOS Network permission off, or a firewall/VPN app) produces exactly that. One possible route there: 0.2.0 didn't declare `INTERNET`, and GrapheneOS may not switch the Network toggle on automatically when an update adds it (unverified). The same block would also explain why address search got nothing. The style, sprite, glyphs and tiles all load fine from a desktop (checked with curl). 0.4.0 shows a status chip, falls back to pins on a plain background after 10 s, forces MapLibre online when our own HTTP probe succeeds, and has a Network row that tests reachability.
+
+Check first:
+
+- Map status chip text on the phone, with the Network permission on and off; pins and the dashed line on the fallback background; that tiles appear once network is allowed and the chip is tapped.
+- Search suggestions from Photon on a phone without Play services; the error texts.
+- Floating button: dragging, edge snapping, expand/collapse, Close, the notification's Stop action, hiding while the app is in front, and the permission flow (turn on → Settings → back → starts).
+- Swipe gestures leave no leftover strip; snackbars sit above the nav bar/keyboard and disappear on their own.
+- Next-stop card buttons on one line at large font sizes.
+- Map: pin taps opening stop details, long-press, the pick-a-drop-off-point flow, attribution placement under the search bar.
 - Bottom sheet: peek height tracking the header (planning vs. driving card), half/expanded states, list scrolling inside the sheet, edge-to-edge insets (status/nav bars, display cutouts), light/dark and Material You colors.
-- List gestures: swipe left/right, drag-to-reorder via the handle (and that a re-plan finishing mid-drag doesn't disturb it), Undo snackbars.
 - Stop details sheet: keyboard over the notes field, time pickers, package-location dialog, photo thumbnail.
 - Routes saved by the previous version loading (decode is backward-compatible by design but untested on a real file).
 - Carried over: overlay permission flow; `✓` with auto-navigate launching Maps from over another app; the on-device Valhalla engine opening a tile extract (`Routing.kt`); `tools/build-tiles.sh` has been run for Tennessee (see its header), but the phone has not loaded the result yet.
+
+## Permissions
+
+| Permission | Kind | Why |
+|---|---|---|
+| `INTERNET`, `ACCESS_NETWORK_STATE` | install-time | Map tiles, Photon search, optional Valhalla server; connectivity check. (On GrapheneOS the per-app "Network" toggle must also be on.) MapLibre also merges `ACCESS_WIFI_STATE`. |
+| `ACCESS_FINE_LOCATION` / `COARSE` | runtime | Route start point and search bias. |
+| `POST_NOTIFICATIONS` | runtime (13+) | The floating button's foreground-service notification. |
+| `SYSTEM_ALERT_WINDOW` | special (Settings screen) | The floating button. |
+| `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_SPECIAL_USE` | install-time | Keeps the floating button alive. |
+| Camera | none | Proof photos go through the system camera app (`ACTION_IMAGE_CAPTURE` + `FileProvider`). |
+
 
 ## Roadmap
 
@@ -79,7 +112,7 @@ Principle: add a dependency only where it replaces a large amount of work; use s
 | Label OCR | **ML Kit text recognition, bundled** + **CameraX** | Bundled = offline, no Play Services (~4 MB/script/ABI). Raise CameraX analysis resolution above 640x480. |
 | Package barcodes | **ML Kit barcode scanning, bundled** | More reliable than OCR for tracking numbers. |
 | Voice input | **Platform `RecognizerIntent`** | Zero deps; offline availability varies by device. Vosk rejected (40-50 MB/model, weaker). |
-| Geocoding | **Platform `android.location.Geocoder`** behind the `Geocoder` interface | Quality/storage terms *unverified*. Fallback: Photon/Pelias on our server. Mapbox permanent geocoding has no free tier. |
+| Geocoding | **Platform `android.location.Geocoder`**, then **Photon** over plain `HttpURLConnection` (no new library) | Platform geocoder is absent on phones without Play services. Photon: OSM data, no key, GeoJSON parsed with core `Json`; public instance by default, self-hostable (Settings). Fair use: debounce, ≥3 chars, User-Agent. |
 | Local DB (pins, history) | Plain SharedPreferences JSON now; **Room** when queries are needed | |
 | HTTP | `HttpURLConnection` + `org.json` | OkHttp only if needed. |
 | Avoid | Mapbox proprietary SDK, Vosk, Play Services variants, Fused Location | Keeps the app GrapheneOS-friendly (use platform `LocationManager`). |

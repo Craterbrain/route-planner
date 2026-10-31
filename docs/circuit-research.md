@@ -67,7 +67,7 @@ Legend: **have** = existed before this work, **built** = added in this redesign,
 | Pins reflect status (dynamic markers) | **built** (partial) | Status colors and marks. No pickup, new or edited markers (no pickup type, no change preview). |
 | Address/ETA labels next to pins when zoomed | deferred | Only numbers are drawn. |
 | Bottom sheet stop list with sizes | **built** | `BottomSheetBehavior`: collapsed (header), half and expanded states. The list fills the rest. |
-| Search bar to add stops | **built** | Platform `Geocoder`, up to 5 matches offered to choose from. Plain search, not live autocomplete. |
+| Search bar to add stops | **built** | Live suggestions while typing (debounced): platform `Geocoder`, else Photon (OSM). |
 | Voice add | **have/built** | `RecognizerIntent` from the mic in the search bar adds the stop directly. Reading out a whole list is deferred. |
 | Long-press map to add stop | **built** | Reverse-geocodes when a geocoder exists, otherwise "Dropped pin". Also offers "Set drop-off for current stop". |
 | Spreadsheet import | **have** | CSV via the ⋮ menu or the empty state. `priority` now accepts `first`/`last`. |
@@ -96,7 +96,7 @@ Legend: **have** = existed before this work, **built** = added in this redesign,
 | Edit address / duplicate stop | deferred | Remove + re-add works today. |
 | Remove stop | **built** | With confirmation. |
 | Route summary (stops, time, distance, finish) | **built** | `RouteSummary` in core: remaining time, road distance from the matrix, "done by" clock time, late-stop count. Pushed back by how far behind plan you are. |
-| Floating controls over the nav app | **have** | Overlay action bar (Circuit uses in-app nav / Dynamic Island instead). Still in the ⋮ menu. |
+| Floating controls over the nav app | **built** | Draggable floating button that expands into Prev / Delivered / Failed / Next / Open app / Close (Circuit uses in-app nav / Dynamic Island instead). |
 | Settings (nav app, auto-navigate, map, road data, server) | **built** | One dialog. |
 | Breaks | deferred | |
 | Stop types / colors / pickups | deferred | |
