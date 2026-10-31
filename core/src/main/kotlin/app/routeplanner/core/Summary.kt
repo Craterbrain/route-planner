@@ -55,9 +55,11 @@ fun formatDuration(sec: Int): String {
     }
 }
 
-/** "850 m" / "12.4 km", or "0.5 mi" / "12.4 mi" when [imperial]. */
+/** "850 m" / "12.4 km", or "130 ft" / "12.4 mi" when [imperial] (feet under 0.1 mi, never "0.0 mi"). */
 fun formatDistance(meters: Int, imperial: Boolean): String = if (imperial) {
-    "%.1f mi".format(java.util.Locale.ROOT, meters / 1609.344)
+    val miles = meters / 1609.344
+    if (miles < 0.1) "${(meters * 3.28084 / 10).roundToInt() * 10} ft"
+    else "%.1f mi".format(java.util.Locale.ROOT, miles)
 } else if (meters < 1000) "$meters m" else "%.1f km".format(java.util.Locale.ROOT, meters / 1000.0)
 
 /** Splits "100 Main St, Springfield, IL" into ("100 Main St", "Springfield, IL") for two-line rows. */
