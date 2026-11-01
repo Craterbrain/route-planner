@@ -32,6 +32,14 @@ object Routing {
         return engine
     }
 
+    /** The road-following path service: on-device Valhalla first, then the server URL; null when neither is set up. */
+    fun roads(ctx: Context, prefs: Prefs): ValhallaRoutes? {
+        val e = runCatching { engine(ctx) }.getOrNull()
+        if (e != null) return ValhallaRoutes("on-device", Http { _, body -> e.routeRaw(body) })
+        if (prefs.valhallaUrl.isNotEmpty()) return ValhallaRoutes(prefs.valhallaUrl)
+        return null
+    }
+
     class Source(val provider: MatrixProvider, val label: String)
 
     fun source(ctx: Context, prefs: Prefs): Source {

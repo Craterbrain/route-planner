@@ -113,6 +113,8 @@ class RouteMap(
     private val images = HashSet<String>()
     /** Label bitmaps in the style right now. ETAs change on every re-plan, so old ones are removed or they pile up. */
     private val labelImages = HashSet<String>()
+    /** The driving path along roads for the remaining stops, or null (then the dashed stop-to-stop line is drawn). */
+    private var roadPath: List<LatLng>? = null
 
     private enum class Basemap { LOADING, OK, FALLBACK }
 
@@ -355,10 +357,21 @@ class RouteMap(
     private fun addLayers(s: Style) {
         val primary = ctx.color(M.attr.colorPrimary)
         val surface = ctx.color(M.attr.colorSurface)
+        s.addSource(GeoJsonSource(SRC_ROAD, FeatureCollection.fromFeatures(emptyList())))
         s.addSource(GeoJsonSource(SRC_LINE, FeatureCollection.fromFeatures(emptyList())))
         s.addSource(GeoJsonSource(SRC_PINS, FeatureCollection.fromFeatures(emptyList())))
         s.addSource(GeoJsonSource(SRC_ACCESS, FeatureCollection.fromFeatures(emptyList())))
         s.addSource(GeoJsonSource(SRC_LABELS, FeatureCollection.fromFeatures(emptyList())))
+        // The roads the route really drives: a light outline under a bold line, so it reads on any map color.
+        s.addLayer(LineLayer(LAYER_ROAD_CASING, SRC_ROAD).withProperties(
+            P.lineColor(surface), P.lineWidth(9f), P.lineOpacity(0.9f),
+            P.lineCap(org.maplibre.android.style.layers.Property.LINE_CAP_ROUND), P.lineJoin(org.maplibre.android.style.layers.Property.LINE_JOIN_ROUND),
+        ))
+        s.addLayer(LineLayer(LAYER_ROAD, SRC_ROAD).withProperties(
+            P.lineColor(primary), P.lineWidth(5.5f),
+            P.lineCap(org.maplibre.android.style.layers.Property.LINE_CAP_ROUND), P.lineJoin(org.maplibre.android.style.layers.Property.LINE_JOIN_ROUND),
+        ))
+        // Fallback while the road path is being worked out, or when there is no road data: stop to stop, dashed.
         s.addLayer(LineLayer(LAYER_LINE, SRC_LINE).withProperties(
             P.lineColor(primary), P.lineWidth(3f), P.lineOpacity(0.8f), P.lineDasharray(arrayOf(2f, 1.5f)),
         ))
@@ -380,6 +393,12 @@ class RouteMap(
             P.iconOffset(arrayOf(15f, 0f)),
             P.iconAllowOverlap(true), P.iconIgnorePlacement(true),
         ).also { it.minZoom = 12f })
+    }
+
+    /** Sets (or clears, with null) the road-following path and redraws. */
+    fun setRoadPath(path: List<LatLng>?) {
+        roadPath = path?.takeIf { it.size >= 2 }
+        if (style != null) last?.let { draw(it) }
     }
 
     /** Small rounded tag with [text] on the surface color; drawn next to a pin. */
@@ -456,6 +475,7 @@ class RouteMap(
         val st = style ?: return
         st.getSourceAs<GeoJsonSource>(SRC_PINS)?.setGeoJson(FeatureCollection.fromFeatures(emptyList()))
         st.getSourceAs<GeoJsonSource>(SRC_LINE)?.setGeoJson(FeatureCollection.fromFeatures(emptyList()))
+        st.getSourceAs<GeoJsonSource>(SRC_ROAD)?.setGeoJson(FeatureCollection.fromFeatures(emptyList()))
         st.getSourceAs<GeoJsonSource>(SRC_ACCESS)?.setGeoJson(FeatureCollection.fromFeatures(emptyList()))
         st.getSourceAs<GeoJsonSource>(SRC_LABELS)?.setGeoJson(FeatureCollection.fromFeatures(emptyList()))
     }
@@ -516,8 +536,13 @@ class RouteMap(
         val head = r.start?.takeIf { !underway }?.let { listOf(Point.fromLngLat(it.point.lng, it.point.lat)) }.orEmpty()
         val remaining = head + stops.filter { it.status == Status.PENDING }.map { Point.fromLngLat(it.target.lng, it.target.lat) } +
             listOfNotNull(r.end?.let { Point.fromLngLat(it.lng, it.lat) })
+        val road = roadPath
+        st.getSourceAs<GeoJsonSource>(SRC_ROAD)?.setGeoJson(
+            if (road == null) FeatureCollection.fromFeatures(emptyList())
+            else FeatureCollection.fromFeature(Feature.fromGeometry(LineString.fromLngLats(road.map { Point.fromLngLat(it.lng, it.lat) })))
+        )
         st.getSourceAs<GeoJsonSource>(SRC_LINE)?.setGeoJson(
-            if (remaining.size < 2) FeatureCollection.fromFeatures(emptyList())
+            if (road != null || remaining.size < 2) FeatureCollection.fromFeatures(emptyList())
             else FeatureCollection.fromFeature(Feature.fromGeometry(LineString.fromLngLats(remaining)))
         )
 
@@ -587,6 +612,9 @@ class RouteMap(
         private const val SRC_PINS = "rp-stops"
         private const val SRC_LINE = "rp-line"
         private const val SRC_ACCESS = "rp-access"
+        private const val SRC_ROAD = "rp-road"
+        private const val LAYER_ROAD_CASING = "rp-road-casing"
+        private const val LAYER_ROAD = "rp-road-layer"
         private const val SRC_LABELS = "rp-labels"
         private const val LAYER_LABELS = "rp-labels-layer"
         private const val LAYER_PINS = "rp-stops-layer"

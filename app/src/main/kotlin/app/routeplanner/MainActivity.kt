@@ -327,6 +327,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
 
     override fun onStart() {
         super.onStart()
+        roadKey = null // try the road path again (road data may have been imported since)
         map?.onStart()
         SessionStore.observe(refresh)
         NetStatus.observe(netChanged)
@@ -372,11 +373,40 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
     /** The route start: the open route's, else the saved default. */
     private fun currentStart(): RouteStart? = SessionStore.session?.start ?: prefs.start
 
+    // The road-following line: worked out in the background whenever the points the route drives through change.
+    private var roadKey: List<LatLng>? = null
+    private var roadGen = 0
+
+    /** Start (before any stop is done), the stops still to do, and the end: the line's waypoints, as the map draws them. */
+    private fun routePoints(s: RouteSession?, start: RouteStart?): List<LatLng> {
+        if (s == null) return emptyList()
+        val pending = s.stops.filter { it.status == Status.PENDING }
+        if (pending.isEmpty()) return emptyList()
+        val underway = s.stops.any { it.status != Status.PENDING }
+        return (if (!underway) listOfNotNull(start?.point) else emptyList()) + pending.map { it.access } + listOfNotNull(s.endPoint())
+    }
+
+    private fun updateRoadPath(s: RouteSession?, start: RouteStart?) {
+        val m = map ?: return
+        val points = routePoints(s, start)
+        if (points == roadKey) return
+        roadKey = points
+        m.setRoadPath(null) // a stale line would highlight the wrong roads; the dashed one shows meanwhile
+        if (points.size < 2) return
+        val roads = Routing.roads(this, prefs) ?: return
+        val mine = ++roadGen
+        actions.background({ roads.path(points) }) { r ->
+            if (mine != roadGen || isFinishing || isDestroyed) return@background
+            m.setRoadPath(r.getOrNull()?.takeIf { it.roadLegs > 0 }?.path)
+        }
+    }
+
     private fun render() {
         val s = SessionStore.session
         val start = currentStart()
         sheet.render(s, start, s?.end?.mode ?: prefs.end.mode)
         map?.render(s, selectedId, start, endAddress())
+        updateRoadPath(s, start)
         search.hint = when {
             searchingEnd -> "Search the ending address"
             searchingStart || start == null -> "Search your starting address"

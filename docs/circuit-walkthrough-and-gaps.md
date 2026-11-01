@@ -144,7 +144,7 @@ Legend: **have** = in the app (0.8.1, unverified on a phone) · **partial** · *
 | Circuit | Us |
 |---|---|
 | Numbered markers | **have** |
-| **Blue route line along the real roads** | **missing**: ours is a dashed straight line between stops. On-device Valhalla can return the road geometry |
+| **Blue route line along the real roads** | **have (0.8.2)**: Valhalla `/route` geometry, drawn bold with an outline; dashed line only as a fallback |
 | Marker styles for pickup / priority / edited | **partial**: current, done, failed only |
 | ETA / address next to markers | **have** (ETA, street for the current stop) |
 | **Blue dot for your position and a recenter button** | **missing** |
@@ -178,7 +178,7 @@ Legend: **have** = in the app (0.8.1, unverified on a phone) · **partial** · *
 
 ## Suggested order, by value for a courier and cost
 
-1. **Road-following route line** (Valhalla `route` on-device; draws the real path and gives true leg distances). Biggest visual gap, no new dependency.
+1. ~~Road-following route line~~ done in 0.8.2 (true per-leg distances from the same response are still unused).
 2. **Your position on the map + recenter button.** Small, and expected.
 3. **Load vehicle mode** (loading order = reverse of the route; scan each parcel to tick it off; suggest a spot). Uses features we already have (package zones, barcodes).
 4. **Pickup type**, **package size/type**, **packages − button**, **duplicate stop**, **change address**: the stop-editor gaps, all small.
