@@ -76,6 +76,7 @@ class StopAdapter(private val ctx: Context, private val host: RouteHost) : Recyc
         val line1: TextView,
         val line2: TextView,
         val meta: TextView,
+        val idBadge: TextView,
         val time: TextView,
         val handle: ImageView,
     ) : RecyclerView.ViewHolder(root)
@@ -84,6 +85,8 @@ class StopAdapter(private val ctx: Context, private val host: RouteHost) : Recyc
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
         val c = ctx
         val root = c.horizontal().apply {
+            // Full width: without this RecyclerView sizes the row to its content and the drag handle lands mid-row.
+            layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             setPadding(c.dp(12), c.dp(10), c.dp(4), c.dp(10))
             minimumHeight = c.dp(64)
             isClickable = true
@@ -102,7 +105,18 @@ class StopAdapter(private val ctx: Context, private val host: RouteHost) : Recyc
         val line1 = c.label(16f, bold = true, lines = 1)
         val line2 = c.label(13f, M.attr.colorOnSurfaceVariant, lines = 1)
         val meta = c.label(12f, M.attr.colorOnSurfaceVariant, lines = 2)
-        texts.addView(line1); texts.addView(line2); texts.addView(meta)
+        // The address ID as a badge (tertiary container on its on-color: strong contrast in light and dark), beside the details.
+        val idBadge = TextView(c).apply {
+            textSize = 12f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(c.color(M.attr.colorOnTertiaryContainer))
+            background = c.roundRect(M.attr.colorTertiaryContainer, 10)
+            setPadding(c.dp(8), c.dp(2), c.dp(8), c.dp(2))
+        }
+        val metaRow = c.horizontal(Gravity.TOP)
+        metaRow.addView(idBadge, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = c.dp(8); topMargin = c.dp(2) })
+        metaRow.addWeighted(meta)
+        texts.addView(line1); texts.addView(line2); texts.addView(metaRow)
         root.addWeighted(texts)
         val time = c.label(13f, M.attr.colorOnSurfaceVariant).apply { gravity = Gravity.END }
         root.addView(time, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = c.dp(8) })
@@ -113,7 +127,7 @@ class StopAdapter(private val ctx: Context, private val host: RouteHost) : Recyc
             setPadding(c.dp(10), c.dp(10), c.dp(10), c.dp(10))
         }
         root.addView(handle, LinearLayout.LayoutParams(c.dp(44), c.dp(44)))
-        val h = Holder(root, badge, line1, line2, meta, time, handle)
+        val h = Holder(root, badge, line1, line2, meta, idBadge, time, handle)
         handle.setOnTouchListener { _, e ->
             if (e.actionMasked == MotionEvent.ACTION_DOWN) touchHelper.startDrag(h)
             false
@@ -134,6 +148,7 @@ class StopAdapter(private val ctx: Context, private val host: RouteHost) : Recyc
         h.meta.text = r.meta
         h.meta.visibility = if (r.meta.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE
         h.meta.setTextColor(ctx.color(if (r.metaIsWarning) M.attr.colorError else M.attr.colorOnSurfaceVariant))
+        h.idBadge.text = "ID ${s.entryNo}"
         h.time.text = r.time
         val finished = s.status != Status.PENDING
         h.root.alpha = if (finished) 0.6f else 1f
