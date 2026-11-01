@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Make a test route (a CSV the app can import) from an address pack.
 
-  tools/make-test-route.py [--pack data/cumberland/addresses.sqlite] [--stops 50] [--seed 1] [--out route.csv]
+  tools/make-test-route.py [--pack data/cumberland/addresses.sqlite] [--stops 50] [--zip 38555] [--seed 1] [--out route.csv]
 
 Picks random real addresses from the pack (one per house, no units), gives every stop 1-9 packages and every package
 a fake tracking number (USPS, UPS or FedEx style; half of the USPS ones also get the longer "420"+ZIP+tracking form a
@@ -39,6 +39,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--pack", default="data/cumberland/addresses.sqlite")
     ap.add_argument("--stops", type=int, default=50)
+    ap.add_argument("--zip", default=None, help="only addresses in this ZIP code, e.g. 38555")
     ap.add_argument("--seed", type=int, default=None, help="repeatable output")
     ap.add_argument("--out", default="data/cumberland/test-route-50.csv")
     a = ap.parse_args()
@@ -49,8 +50,10 @@ def main():
         "SELECT a.number, s.name, COALESCE(s.pcity, s.city), s.postcode, a.lat, a.lon "
         "FROM addr a JOIN streets s ON s.id = a.street_id "
         "WHERE a.unit = '' AND a.num > 0 AND s.postcode IS NOT NULL AND length(s.postcode) = 5").fetchall()
+    if a.zip:
+        rows = [r for r in rows if r[3] == a.zip]
     if len(rows) < a.stops:
-        sys.exit(f"the pack only has {len(rows)} usable addresses")
+        sys.exit(f"the pack only has {len(rows)} usable addresses" + (f" in {a.zip}" if a.zip else ""))
     chosen, seen = [], set()
     for number, street, city, zipcode, lat, lon in rnd.sample(rows, len(rows)):
         address = f"{number} {street}, {city or ''}, TN {zipcode}".replace(", ,", ",")
