@@ -199,6 +199,14 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
 
     private fun drivingHeader(s: RouteSession, sum: RouteSummary) {
         val c = s.current ?: return
+        // Stop (back to planning, progress kept) and the route menu, on the right above the card.
+        val bar = ctx.horizontal()
+        bar.addWeighted(android.view.View(ctx))
+        bar.addView(ctx.compact(ctx.button("Stop", M.attr.materialButtonOutlinedStyle, icon = R.drawable.ic_stop) { host.stopRoute() }))
+        val more = ctx.iconButton(R.drawable.ic_more_vert, "Route menu") {}
+        more.setOnClickListener { host.routeMenu(more) }
+        bar.addView(more)
+        header.addFull(bar, bottomDp = 2)
         if (s.dirty) changedBanner()
         val card = MaterialCardView(ctx).apply {
             setCardBackgroundColor(ctx.color(M.attr.colorPrimaryContainer))

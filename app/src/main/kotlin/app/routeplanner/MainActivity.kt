@@ -272,11 +272,6 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
             menu.add(0, 6, 0, "Floating button").apply { isCheckable = true; isChecked = OverlayService.running }
             menu.add(0, 9, 0, "Permissions & network")
             menu.add(0, 7, 0, "Settings")
-            if (s != null && s.stops.isNotEmpty()) menu.add(0, 13, 0, "Share route…")
-            if (s != null && s.stops.any { it.status != Status.PENDING }) menu.add(0, 10, 0, "Export delivery report")
-            menu.add(0, 20, 0, "New route…")
-            if (s != null && s.stops.isNotEmpty()) menu.add(0, 21, 0, "Save route…")
-            menu.add(0, 22, 0, "Open route…")
             setOnMenuItemClickListener {
                 when (it.itemId) {
                     1 -> importCsv()
@@ -286,13 +281,8 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
                     5 -> map?.frameAll()
                     6 -> toggleOverlay()
                     7 -> showSettings()
-                    20 -> newRoute()
-                    21 -> saveRoute()
-                    22 -> openRoute()
                     9 -> showPermissions()
-                    10 -> SessionStore.session?.let { ProofExport.share(this@MainActivity, it.stops, it.packages, ::snack) }
                     11 -> scanLabel()
-                    13 -> shareRoute()
                     12 -> startActivityForResult(Intent(this@MainActivity, ScanActivity::class.java).putExtra(ScanActivity.EXTRA_MODE, ScanActivity.MODE_FIND), REQ_SCAN_FIND)
                 }
                 true
@@ -501,6 +491,16 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         behavior.state = BottomSheetBehavior.STATE_COLLAPSED
     }
 
+    /** Stop: leave driving mode for the planning screen. Nothing is lost; the snackbar can resume. */
+    override fun stopRoute() {
+        val s = SessionStore.session ?: return
+        s.stop()
+        SessionStore.commit(this)
+        snack("Stopped routing. Your progress is kept.", "Resume") {
+            SessionStore.session?.let { it.started = true; SessionStore.commit(this) }
+        }
+    }
+
     override fun prev() = SessionStore.act(this) { back(); null }
     override fun next() = SessionStore.act(this) { next(); null }
 
@@ -528,11 +528,17 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
     override fun routeMenu(anchor: android.view.View) {
         val has = SessionStore.session?.stops?.isNotEmpty() == true
         android.widget.PopupMenu(this, anchor).apply {
+            val done = SessionStore.session?.stops?.any { it.status != Status.PENDING } == true
             menu.add(0, 1, 0, "New route")
             if (has) menu.add(0, 2, 0, "Save route")
             menu.add(0, 3, 0, "Open route")
+            if (has) menu.add(0, 4, 0, "Share route…")
+            if (done) menu.add(0, 5, 0, "Export delivery report")
             setOnMenuItemClickListener {
-                when (it.itemId) { 1 -> newRoute(); 2 -> saveRoute(); 3 -> openRoute() }
+                when (it.itemId) {
+                    1 -> newRoute(); 2 -> saveRoute(); 3 -> openRoute(); 4 -> shareRoute()
+                    5 -> SessionStore.session?.let { s -> ProofExport.share(this@MainActivity, s.stops, s.packages, ::snack) }
+                }
                 true
             }
         }.show()

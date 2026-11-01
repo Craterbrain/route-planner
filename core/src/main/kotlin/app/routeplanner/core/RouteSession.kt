@@ -163,6 +163,9 @@ class RouteSession(
         firstPending()?.let { cursor = it }
     }
 
+    /** "Stop": leave driving mode and go back to planning. Every status, proof and the position in the list are kept. */
+    fun stop() { started = false }
+
     // ---- Edits -------------------------------------------------------------
 
     /** Drag-to-reorder / "Move to position": [to] is the 0-based list index. */

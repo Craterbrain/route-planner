@@ -83,6 +83,8 @@ Without network the route list, stop editing, delivery/proof, the floating butto
 
 ## Not yet verified on a device
 
+**0.8.6**: the driving card has a **Stop** button (top right, above the card) that ends routing and returns to the planning screen with every status, proof and your place in the list kept; a snackbar offers **Resume**. The driving card now also has the route ⋮ menu beside it. The top ⋮ menu is back to app-level actions (import, scan, optimize, reverse, show whole route, floating button, permissions, settings); the route actions **Share route…, Export delivery report, New route, Save route, Open route** moved to the bottom card's ⋮ menu (the card menu shows Share when there are stops and Export once something is finished).
+
 **0.8.5**: the driving card's **Package finder** box shows the last four characters of each package's tracking number as a badge on the right of its row (primary fill, monospace bold), taken from its longest scanned code or, for an imported package, its tracking-number id (`Barcodes.lastFour`). Packages with nothing scanned show no badge.
 
 **0.8.4**: in stop details a package's scanned code is shown by its end only ("Scanned: …269887364749": the last 12 characters, cut at the front where the "420"+ZIP prefix is just noise), with the last four characters bold, larger and in the accent color so they can be matched to the label at a glance (`Barcodes.shown`).

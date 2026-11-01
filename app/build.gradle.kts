@@ -13,8 +13,8 @@ android {
         targetSdk = 35
         // `-Pabis=arm64-v8a` builds for 64-bit phones only (about 30 MB smaller); the default keeps 32-bit ARM too.
         ndk { abiFilters += (project.findProperty("abis") as String? ?: "arm64-v8a,armeabi-v7a").split(",") }
-        versionCode = 21
-        versionName = "0.8.5"
+        versionCode = 22
+        versionName = "0.8.6"
     }
 
     buildTypes {

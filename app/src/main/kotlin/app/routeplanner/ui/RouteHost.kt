@@ -13,6 +13,8 @@ interface RouteHost {
     fun optimize()
     fun update()
     fun startRoute()
+    /** Stop routing: back to the planning screen, progress kept. */
+    fun stopRoute()
     fun prev()
     fun next()
     fun importCsv()
