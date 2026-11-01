@@ -47,6 +47,12 @@ import java.io.File
  */
 class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.Listener {
     private lateinit var prefs: Prefs
+    private val scanFlow by lazy { ScanFlow(this, actions, this, { search }, { currentStart()?.point }, { map != null }, ::pickDropOff) }
+    private val settings by lazy {
+        SettingsFlow(this, prefs, this, { showPermissions() }, { offlineMaps.show() }, { storageFlow.show() }, { Welcome.show(this) }, ::pickDocument, REQ_ADDRESSES, REQ_TILES)
+    }
+    private val storageFlow by lazy { StorageFlow(this, actions, this) }
+    private val library by lazy { RouteLibraryFlow(this, actions, prefs, this) }
     private val offlineMaps by lazy { OfflineMapsFlow(this, { routeArea() }, { currentStart()?.label }, ::snack) }
     private lateinit var actions: RouteActions
     private lateinit var root: CoordinatorLayout
@@ -126,7 +132,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         sheetParams.behavior = BottomSheetBehavior<LinearLayout>()
         root.addView(sheet.view, sheetParams)
         // Search suggestions float above the sheet, under the search bar.
-        searchPanel = SearchPanel(this, search, { actions.addressSearch() }, onAddAnyway = { text -> addAnyway(text) }) { s, typed ->
+        searchPanel = SearchPanel(this, search, { actions.addressSearch() }, onAddAnyway = { text -> scanFlow.addAnyway(text) }) { s, typed ->
             hideKeyboard()
             val p = s.point ?: return@SearchPanel
             prefs.addRecent(s)
@@ -166,10 +172,15 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         }
         setContentView(root)
         handleIntent(intent)
+        // A crash since the driver last looked: offer the log once (it holds no addresses or typed text).
+        CrashLog.lastCrashAt(this)?.takeIf { it > prefs.seenCrashAt }?.let { at ->
+            prefs.seenCrashAt = at
+            root.post { snack("The app crashed last time. Share the log so it can be fixed?", "Share") { DiagnosticsShare.share(this) } }
+        }
         root.post { GoogleTransport.warmUp(this) } // async; plain HTTP until Play services' Cronet is ready
         if (!prefs.setupShown) {
             prefs.setupShown = true
-            root.post { showPermissions() }
+            root.post { Welcome.show(this) { showPermissions() } } // welcome first, then the permissions list
         }
     }
 
@@ -280,7 +291,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
                     4 -> SessionStore.session?.let { r -> r.reverse(); SessionStore.commit(this@MainActivity); update() }
                     5 -> map?.frameAll()
                     6 -> toggleOverlay()
-                    7 -> showSettings()
+                    7 -> settings.show()
                     9 -> showPermissions()
                     11 -> scanLabel()
                     12 -> startActivityForResult(Intent(this@MainActivity, ScanActivity::class.java).putExtra(ScanActivity.EXTRA_MODE, ScanActivity.MODE_FIND), REQ_SCAN_FIND)
@@ -522,7 +533,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(search, InputMethodManager.SHOW_IMPLICIT)
     }
 
-    // ---- Route library: New / Save / Open ---------------------------------------
+    // ---- Route library: New / Save / Open (the dialogs live in RouteLibraryFlow) --
 
     /** The card's ⋮ menu. */
     override fun routeMenu(anchor: android.view.View) {
@@ -536,7 +547,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
             if (done) menu.add(0, 5, 0, "Export delivery report")
             setOnMenuItemClickListener {
                 when (it.itemId) {
-                    1 -> newRoute(); 2 -> saveRoute(); 3 -> openRoute(); 4 -> shareRoute()
+                    1 -> newRoute(); 2 -> library.save(); 3 -> library.open(); 4 -> shareRoute()
                     5 -> SessionStore.session?.let { s -> ProofExport.share(this@MainActivity, s.stops, s.packages, ::snack) }
                 }
                 true
@@ -544,79 +555,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         }.show()
     }
 
-    /** Clears the route (and the floating button). */
-    private fun discardRoute() {
-        SessionStore.set(this, null)
-        OverlayService.stop(this)
-    }
-
-    /** New route: asks what to do with the one that is open. */
-    override fun newRoute() {
-        val s = SessionStore.session
-        if (s == null || s.stops.isEmpty()) { snack("The route is already empty"); return }
-        val done = s.stops.count { it.status != Status.PENDING }
-        MaterialAlertDialogBuilder(this).setTitle("Start a new route?")
-            .setMessage("The current route has ${s.stops.size} stop" + (if (s.stops.size == 1) "" else "s") + (if (done > 0) " ($done done)" else "") +
-                ". Save it first if you want to come back to it.")
-            .setPositiveButton("Save, then new") { _, _ -> saveRoute { discardRoute() } }
-            .setNegativeButton("Cancel", null)
-            .setNeutralButton("Discard it") { _, _ -> discardRoute() }
-            .show()
-    }
-
-    /** Save route: asks for a name; saving again under the same name updates the saved copy. */
-    private fun saveRoute(then: (() -> Unit)? = null) {
-        val s = SessionStore.session ?: return
-        val field = android.widget.EditText(this).apply {
-            hint = "Route name"
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-            setText(s.name ?: java.text.SimpleDateFormat("EEE MMM d, h:mm a", java.util.Locale.getDefault()).format(java.util.Date()))
-            setSelection(text.length)
-        }
-        val box = android.widget.LinearLayout(this).apply { setPadding(dp(24), dp(8), dp(24), 0); addView(field, android.widget.LinearLayout.LayoutParams(-1, -2)) }
-        fun doSave(asNew: Boolean) {
-            val name = field.text.toString().trim().ifEmpty { "Route" }
-            val prepared = RouteLibrary.prepare(this, s, name, asNew)
-            actions.background({ prepared.write() }) { r ->
-                r.onSuccess { SessionStore.commit(this); snack("Saved “$name”"); then?.invoke() }
-                    .onFailure { snack("Couldn't save the route: ${it.message}") }
-            }
-        }
-        val b = MaterialAlertDialogBuilder(this).setTitle("Save route").setView(box)
-            .setPositiveButton(if (s.savedId != null) "Update" else "Save") { _, _ -> doSave(asNew = false) }
-            .setNegativeButton("Cancel", null)
-        if (s.savedId != null) b.setNeutralButton("Save as new") { _, _ -> doSave(asNew = true) }
-        b.show()
-    }
-
-    /** Open route: lists the saved routes; opening one replaces the current route. */
-    private fun openRoute() {
-        actions.background({ RouteLibrary.list(this) }) { r ->
-            if (isFinishing || isDestroyed) return@background
-            RouteLibraryDialog.show(this, r.getOrDefault(emptyList()),
-                onOpen = { e -> confirmOpen(e) },
-                onDelete = { e -> Dialogs.confirm(this, "Delete “${e.name}”?", "The saved copy is removed from this phone.", "Delete") {
-                    actions.background({ RouteLibrary.delete(this, e.id) }) { snack("Deleted “${e.name}”"); openRoute() }
-                } })
-        }
-    }
-
-    private fun confirmOpen(e: RouteLibrary.Entry) {
-        val current = SessionStore.session?.takeIf { it.stops.isNotEmpty() }
-        val go = {
-            actions.background({ RouteLibrary.load(this, e.id) }) { r ->
-                val loaded = r.getOrNull()
-                if (loaded == null) { snack("Couldn't open “${e.name}”"); return@background }
-                loaded.navApp = prefs.navApp; loaded.autoNavigate = prefs.autoNavigate
-                if (loaded.start == null) loaded.start = prefs.start
-                SessionStore.set(this, loaded)
-                actions.replan(optimize = false, showBusy = false) // times are relative to now
-                snack("Opened “${e.name}”")
-            }
-        }
-        if (current == null) go()
-        else Dialogs.confirm(this, "Open “${e.name}”?", "This replaces the route that is open now. Save that one first if you need it.", "Open") { go() }
-    }
+    override fun newRoute() = library.newRoute()
 
     override fun pickDropOff(stopId: String) {
         val m = map ?: return
@@ -801,51 +740,9 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
 
     // ---- Inputs --------------------------------------------------------------
 
-    /**
-     * A tapped address from Scan label: confirm it with Google (see [AddressSearch.validate]) and add it
-     * straight away; only if nothing confirms it does it go into the search bar to be picked or edited.
-     */
-    private fun addScanned(address: String, name: String?, codes: List<String>) {
-        val search = actions.addressSearch()
-        val busy = Dialogs.busy(this, "Checking the address…")
-        actions.background({ search.validate(address) }) { r ->
-            busy.dismiss()
-            if (isFinishing || isDestroyed) return@background
-            val hit = r.getOrNull()
-            if (hit?.point != null) actions.addStopAt(hit.label.ifEmpty { address }, hit.point!!, typed = address, approximate = hit.approximate, notes = name?.let { "For $it" }.orEmpty(), codes = codes)
-            else {
-                // Just fill the box: the panel looks it up and offers "Add anyway" if nothing confirms it.
-                this.search.setText(address)
-                this.search.setSelection(this.search.text.length)
-                snack("Couldn't confirm that address. Pick a match, edit it, or add it anyway.")
-            }
-        }
-    }
-
-    /**
-     * "Add anyway": the text goes on the route as typed even though nothing confirmed it. It is placed at the best
-     * guess available (the top result of any source, else the town/ZIP part, else the route start), flagged as an
-     * estimate, and the driver is asked to tap the map where it really is.
-     */
-    private fun addAnyway(text: String) {
-        val start = currentStart()?.point
-        val search = actions.addressSearch()
-        val busy = Dialogs.busy(this, "Adding…")
-        actions.background({
-            fun guess(q: String) = (search.suggest(q, 3) as? AddressSearch.Outcome.Found)?.items?.firstOrNull { it.point != null }?.point
-            guess(text) ?: text.substringAfter(',', "").trim().takeIf { it.length >= 3 }?.let { guess(it) } ?: start
-        }) { r ->
-            busy.dismiss()
-            if (isFinishing || isDestroyed) return@background
-            val at = r.getOrNull()
-            if (at == null) { snack("Set a starting point first, then add it again."); return@background }
-            val id = actions.addStopAt(text, at, typed = text, approximate = true) ?: return@background
-            if (map != null) {
-                pickDropOff(id)
-                snack("Added at an estimated spot. Tap the map where it really is.")
-            } else snack("Added at an estimated spot. Adjust it in the stop's details.")
-        }
-    }
+    /** Opens the system file picker; the result comes back to onActivityResult under [req]. */
+    private fun pickDocument(req: Int) =
+        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), req)
 
     /** Search bar camera button / ⋮ → Scan label. */
     private fun scanLabel() {
@@ -896,41 +793,6 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         snack("Floating button on: it shows over your navigation app. Tap it for actions, drag to move.")
     }
 
-    private fun showSettings() {
-        val tiles = Routing.tilesFile(this)
-        val model = Dialogs.SettingsModel(
-            waze = prefs.navApp == NavApp.WAZE,
-            autoNavigate = prefs.autoNavigate,
-            showMap = prefs.showMap,
-            serverUrl = prefs.valhallaUrl,
-            geocoderUrl = prefs.geocoderUrl,
-            googleSuggest = prefs.googleSuggest,
-            googleTransport = GoogleTransport.description,
-            addressInfo = AddressPack.summary(this) ?: "No address data. Import a Tennessee addresses.sqlite to look up house addresses offline.",
-            addressAttribution = AddressPack.meta(this)["attribution"],
-            recentCount = prefs.recents.size,
-            roadsInfo = if (tiles.exists()) "Offline road data installed (${tiles.length() / 1_000_000} MB)."
-            else "No offline road data: times come from the server below, or straight-line estimates.",
-        )
-        Dialogs.settings(this, model, openPermissions = { showPermissions() },
-            importAddresses = {
-                startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), REQ_ADDRESSES)
-            },
-            manageRecents = { manageRecents() },
-            openOfflineMaps = { offlineMaps.show() },
-            importRoads = {
-            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), REQ_TILES)
-        }) { m ->
-            prefs.navApp = if (m.waze) NavApp.WAZE else NavApp.GOOGLE
-            prefs.autoNavigate = m.autoNavigate
-            prefs.valhallaUrl = m.serverUrl
-            prefs.geocoderUrl = m.geocoderUrl
-            prefs.googleSuggest = m.googleSuggest
-            SessionStore.session?.let { s -> s.navApp = prefs.navApp; s.autoNavigate = m.autoNavigate; SessionStore.commit(this) }
-            if (m.showMap != prefs.showMap) { prefs.showMap = m.showMap; recreate() }
-        }
-    }
-
     // ---- Offline maps (the dialogs live in OfflineMapsFlow) ---------------------
 
     /** The area to save: everything the route touches, padded so the edges aren't the screen edge. */
@@ -938,20 +800,6 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         val s = SessionStore.session
         val pts = s?.stops?.map { it.target }.orEmpty() + listOfNotNull(currentStart()?.point, endAddress())
         return Bounds.around(pts)?.padded(0.25, 0.02)
-    }
-
-    /** Settings → recent searches: remove one, or clear all. */
-    private fun manageRecents() {
-        val items = prefs.recents
-        if (items.isEmpty()) { snack("No recent searches"); return }
-        MaterialAlertDialogBuilder(this).setTitle("Recent searches")
-            .setItems(items.map { it.label }.toTypedArray()) { _, i ->
-                Dialogs.confirm(this, "Remove from recents?", items[i].label, "Remove") {
-                    prefs.recents = prefs.recents.filter { SuggestRanker.key(it) != SuggestRanker.key(items[i]) }
-                }
-            }
-            .setNeutralButton("Clear all") { _, _ -> prefs.recents = emptyList(); snack("Recent searches cleared") }
-            .setNegativeButton("Close", null).show()
     }
 
     @Deprecated("fine for a single-activity app")
@@ -967,7 +815,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
                 searchPanel.submit()
             }
             REQ_PHOTO -> Toast.makeText(this, "Photo attached", Toast.LENGTH_SHORT).show()
-            REQ_SCAN_LABEL -> data?.getStringExtra(ScanActivity.EXTRA_ADDRESS)?.let { addScanned(it, data.getStringExtra(ScanActivity.EXTRA_NAME), data.getStringArrayListExtra(ScanActivity.EXTRA_CODES).orEmpty()) } ?: snack("No address read")
+            REQ_SCAN_LABEL -> data?.getStringExtra(ScanActivity.EXTRA_ADDRESS)?.let { scanFlow.addScanned(it, data.getStringExtra(ScanActivity.EXTRA_NAME), data.getStringArrayListExtra(ScanActivity.EXTRA_CODES).orEmpty()) } ?: snack("No address read")
             REQ_SCAN_FIND -> data?.getStringExtra(ScanActivity.EXTRA_STOP_ID)?.let { id ->
                 SessionStore.session?.stop(id)?.let { st -> snack("Stop ${st.optimizedIndex} · ID ${st.entryNo}"); openStop(id) }
             }

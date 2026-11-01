@@ -1,4 +1,4 @@
-# Architecture review (0.7.8)
+# Architecture review (0.7.8, updated for 0.9.0)
 
 Reviewed 2026-10-31 by reading the code, running the tests and Android lint, and measuring the solver. Nothing here
 has been profiled on a phone: the numbers are from a desktop JVM unless stated.
@@ -51,18 +51,27 @@ when the route changes. Nothing polls.
 `Recycle` warnings are false positives (the streams and cursors are in `use {}`). `Gravity.LEFT/RIGHT` in the overlay
 is deliberate: it positions a button at a physical screen edge.
 
-## Known debts (not done, and why)
+## Known debts
 
-- **`MainActivity` is still ~840 lines.** The offline-maps screens and the report export were moved out
-  (`OfflineMapsFlow`, `ProofExport.share`). Still inside it: view construction, the start/end flows, the scan flow,
-  settings. They are coupled to the map-picking banner and the search bar, so moving them without a device to test on
-  risks regressions for little gain. Next candidates: a `StartEndController` and a `ScanFlow`.
-- **`SessionStore` is a global singleton and callers must `commit()` after mutating the session.** It works and is
-  consistent today, but a forgotten `commit` means no save and no redraw. A single `mutate { }` entry point would make
-  that impossible.
+Done since the first version of this review (0.9.0):
+
+- **Saving is automatic.** `RouteSession` now has an `onChanged` hook (every stop, package, cursor, start/end, name and flag
+  setter calls it) and `SessionStore` saves and redraws once per main-thread turn, so a caller that changes the route can't
+  forget to `commit()`. Explicit `commit()` calls still work and are harmless.
+- **`MainActivity` is 824 lines, down from 976.** Moved out: the offline-maps screens (`OfflineMapsFlow`), report export
+  (`ProofExport.share`), New/Save/Open route (`RouteLibraryFlow`), the scan and "add anyway" flows (`ScanFlow`) and Settings
+  (`SettingsFlow`). Still inside it: view construction and the start/end flows. The start/end block (~125 lines) is
+  tangled with the map-picking banner, the search bar's hint and the sheet state, so it stays until it can be moved with a
+  device to test on.
+- **Crash records, storage cleanup, a stable signing identity and a launcher icon** are in (see the README for 0.9.0).
+
+Still open:
+
 - **The travel-time matrix is recomputed on every re-plan**, even when only a note changed. Cheap for straight-line
   estimates, a few Valhalla calls on-device. Caching the last matrix by its point list is the fix, held back because
   the degraded-result flag would need to travel with it.
 - **`Prefs` stores JSON blobs in SharedPreferences.** Fine at this size; Room only if history/queries are needed.
-- **No UI or instrumentation tests**, and nothing since 0.3.0 has run on a device. That is the biggest risk, larger
-  than any item above.
+- **User-visible text is hard-coded English** (no `strings.xml` beyond the app name). Extracting a few hundred strings
+  gives nothing until a translation exists, so it is deliberately not done.
+- **No UI or instrumentation tests**, and the Android layer (everything outside `core/`) has no automated tests at all.
+  That is the biggest risk after "has it run on a phone".

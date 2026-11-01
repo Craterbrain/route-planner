@@ -1,5 +1,6 @@
 package app.routeplanner.ui
 
+import app.routeplanner.AppLog
 import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Bitmap
@@ -132,24 +133,24 @@ class RouteMap(
             container.addView(mv, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             mv.addOnDidFailLoadingMapListener { msg -> onBasemapFailed("couldn't load style: $msg") }
             mv.addOnDidFinishRenderingFrameListener { fully, _, _ ->
-                if (fully && !firstFrame) { firstFrame = true; Log.i(NetStatus.TAG, "map: first full frame (basemap=$basemap)"); updateChip() }
+                if (fully && !firstFrame) { firstFrame = true; AppLog.i("map: first full frame (basemap=$basemap)"); updateChip() }
             }
             mv.addOnTileActionListener { op, _, _, _, _, _, sourceId ->
                 if (op == TileOperation.Error) {
                     tileErrors++
-                    if (tileErrors == 1 || tileErrors % 20 == 0) Log.w(NetStatus.TAG, "map: tile error #$tileErrors (source $sourceId)")
+                    if (tileErrors == 1 || tileErrors % 20 == 0) AppLog.w("map: tile error #$tileErrors (source $sourceId)")
                     main.post { updateChip() }
                 }
             }
-            mv.addOnSpriteErrorListener { id, url -> Log.w(NetStatus.TAG, "map: sprite error $id $url") }
-            mv.addOnGlyphsErrorListener { stack, _, _ -> Log.w(NetStatus.TAG, "map: glyph error ${stack.joinToString()}") }
-            mv.addOnRenderErrorListener { lastError = "render error"; Log.e(NetStatus.TAG, "map: render error"); main.post { updateChip() } }
+            mv.addOnSpriteErrorListener { id, url -> AppLog.w("map: sprite error $id $url") }
+            mv.addOnGlyphsErrorListener { stack, _, _ -> AppLog.w("map: glyph error ${stack.joinToString()}") }
+            mv.addOnRenderErrorListener { lastError = "render error"; AppLog.e("map: render error"); main.post { updateChip() } }
             mv.getMapAsync { m -> setUp(m) }
             view = mv
             setChip("Map: starting…")
         } catch (t: Throwable) {
             // Native library or GL problems: keep the app usable without a map.
-            Log.e(NetStatus.TAG, "map: MapLibre failed to start", t)
+            AppLog.e("map: MapLibre failed to start", t)
             view = null
             showNotice("Map unavailable on this device (${t.javaClass.simpleName}). The stop list still works.")
         }
@@ -162,12 +163,12 @@ class RouteMap(
             override fun v(tag: String, msg: String, tr: Throwable) {}
             override fun d(tag: String, msg: String) {}
             override fun d(tag: String, msg: String, tr: Throwable) {}
-            override fun i(tag: String, msg: String) { Log.i(NetStatus.TAG, "maplibre[$tag] $msg") }
-            override fun i(tag: String, msg: String, tr: Throwable) { Log.i(NetStatus.TAG, "maplibre[$tag] $msg", tr) }
-            override fun w(tag: String, msg: String) { Log.w(NetStatus.TAG, "maplibre[$tag] $msg") }
-            override fun w(tag: String, msg: String, tr: Throwable) { Log.w(NetStatus.TAG, "maplibre[$tag] $msg", tr) }
-            override fun e(tag: String, msg: String) { Log.e(NetStatus.TAG, "maplibre[$tag] $msg"); lastError = msg.take(80) }
-            override fun e(tag: String, msg: String, tr: Throwable) { Log.e(NetStatus.TAG, "maplibre[$tag] $msg", tr); lastError = msg.take(80) }
+            override fun i(tag: String, msg: String) { AppLog.i("maplibre[$tag] $msg") }
+            override fun i(tag: String, msg: String, tr: Throwable) { AppLog.i("maplibre[$tag] $msg", tr) }
+            override fun w(tag: String, msg: String) { AppLog.w("maplibre[$tag] $msg") }
+            override fun w(tag: String, msg: String, tr: Throwable) { AppLog.w("maplibre[$tag] $msg", tr) }
+            override fun e(tag: String, msg: String) { AppLog.e("maplibre[$tag] $msg"); lastError = msg.take(80) }
+            override fun e(tag: String, msg: String, tr: Throwable) { AppLog.e("maplibre[$tag] $msg", tr); lastError = msg.take(80) }
         })
     }
 
@@ -181,7 +182,7 @@ class RouteMap(
         if (text == null) { chip.visibility = View.GONE; return }
         chip.text = text
         chip.visibility = View.VISIBLE
-        Log.i(NetStatus.TAG, text)
+        AppLog.i(text)
     }
 
     private val hideChip = Runnable { if (basemap == Basemap.OK && tileErrors == 0) chip.visibility = View.GONE }
@@ -208,7 +209,7 @@ class RouteMap(
         val st = NetStatus.last.state
         if (st == NetStatus.State.OK) {
             // Android said "offline" to MapLibre but our own request got through: tell MapLibre.
-            if (MapLibre.isConnected() == false) { Log.w(NetStatus.TAG, "map: forcing MapLibre online"); MapLibre.setConnected(true) }
+            if (MapLibre.isConnected() == false) { AppLog.w("map: forcing MapLibre online"); MapLibre.setConnected(true) }
             if (basemap == Basemap.FALLBACK) loadBasemap()
         }
         updateChip()
@@ -266,7 +267,7 @@ class RouteMap(
         main.removeCallbacks(styleTimeout)
         main.postDelayed(styleTimeout, STYLE_TIMEOUT_MS)
         val url = styleUrl()
-        Log.i(NetStatus.TAG, "map: loading $url (MapLibre connected=${MapLibre.isConnected()})")
+        AppLog.i("map: loading $url (MapLibre connected=${MapLibre.isConnected()})")
         m.setStyle(Style.Builder().fromUri(url)) { s ->
             if (basemap != Basemap.LOADING) return@setStyle // fallback already took over
             main.removeCallbacks(styleTimeout)
@@ -313,7 +314,7 @@ class RouteMap(
     private fun onBasemapFailed(why: String) {
         main.removeCallbacks(styleTimeout)
         if (basemap == Basemap.FALLBACK) return
-        Log.w(NetStatus.TAG, "map: basemap failed ($why); using offline background")
+        AppLog.w("map: basemap failed ($why); using offline background")
         lastError = why
         basemap = Basemap.FALLBACK
         val m = map ?: return
@@ -575,7 +576,7 @@ class RouteMap(
         val bottom = (insetBottom + pad).coerceAtMost(h / 2)
         runCatching {
             m.easeCamera(CameraUpdateFactory.newLatLngBounds(LatLngBounds.Builder().includes(distinct).build(), pad, top, pad, bottom))
-        }.onFailure { Log.w(NetStatus.TAG, "map: frameAll failed: $it") }
+        }.onFailure { AppLog.w("map: frameAll failed: $it") }
     }
 
     fun focus(p: LatLng) {

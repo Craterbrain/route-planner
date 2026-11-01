@@ -55,7 +55,7 @@ object OfflineMaps {
                     override fun onError(error: String?) { status[r.id] = null; if (status.size == regions.size) finish() }
                 })
             }
-            override fun onError(error: String) { Log.w(TAG, "offline: list failed: $error"); onResult(emptyList()) }
+            override fun onError(error: String) { AppLog.w("offline: list failed: $error"); onResult(emptyList()) }
         })
     }
 
@@ -105,7 +105,7 @@ object OfflineMaps {
                         }
                         override fun onError(error: OfflineRegionError) {
                             // Individual tile errors are retried by the engine; report and stop on a hard failure.
-                            Log.w(TAG, "offline: ${error.reason}: ${error.message}")
+                            AppLog.w("offline: ${error.reason}: ${error.message}")
                             if (error.reason == OfflineRegionError.REASON_CONNECTION && !job.cancelled) {
                                 job.cancel()
                                 onDone(Result.failure(IllegalStateException("No network connection. Try again when you're online.")))
@@ -138,7 +138,7 @@ object OfflineMaps {
 
     private val noopDelete = object : OfflineRegion.OfflineRegionDeleteCallback {
         override fun onDelete() {}
-        override fun onError(error: String) { Log.w(TAG, "offline: delete failed: $error") }
+        override fun onError(error: String) { AppLog.w("offline: delete failed: $error") }
     }
 
     fun delete(saved: Saved, onDone: () -> Unit) {
@@ -146,7 +146,7 @@ object OfflineMaps {
         if (left == 0) { onDone(); return }
         for (r in saved.regions) r.delete(object : OfflineRegion.OfflineRegionDeleteCallback {
             override fun onDelete() { if (--left == 0) onDone() }
-            override fun onError(error: String) { Log.w(TAG, "offline: delete failed: $error"); if (--left == 0) onDone() }
+            override fun onError(error: String) { AppLog.w("offline: delete failed: $error"); if (--left == 0) onDone() }
         })
     }
 }

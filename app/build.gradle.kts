@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -13,18 +15,34 @@ android {
         targetSdk = 35
         // `-Pabis=arm64-v8a` builds for 64-bit phones only (about 30 MB smaller); the default keeps 32-bit ARM too.
         ndk { abiFilters += (project.findProperty("abis") as String? ?: "arm64-v8a,armeabi-v7a").split(",") }
-        versionCode = 23
-        versionName = "0.8.7"
+        versionCode = 24
+        versionName = "0.9.0"
     }
 
+    // One signing identity for every build, kept outside the repo: ~/.config/route-planner/signing/signing.properties
+    // (or the directory named by the RP_SIGNING_DIR environment variable). Without it, builds fall back to the machine's
+    // default debug key and the APK cannot update one signed on another machine.
+    val signingDir = File(System.getenv("RP_SIGNING_DIR") ?: "${System.getProperty("user.home")}/.config/route-planner/signing")
+    val signingProps = Properties().apply { File(signingDir, "signing.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) } }
+    signingConfigs {
+        if (signingProps.containsKey("storeFile")) create("app") {
+            storeFile = File(signingDir, signingProps.getProperty("storeFile"))
+            storePassword = signingProps.getProperty("storePassword")
+            keyAlias = signingProps.getProperty("keyAlias")
+            keyPassword = signingProps.getProperty("keyPassword")
+        }
+    }
     buildTypes {
+        debug {
+            signingConfigs.findByName("app")?.let { signingConfig = it }
+        }
         release {
             // `./gradlew :app:assembleRelease -Pshrink` turns on R8 + resource shrinking. Off by default: it has not been
             // run on a device, and JNI-backed libraries (MapLibre, Valhalla, ML Kit) are the usual casualties.
             isMinifyEnabled = project.hasProperty("shrink")
             isShrinkResources = project.hasProperty("shrink")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("app") ?: signingConfigs.getByName("debug")
         }
     }
     compileOptions {

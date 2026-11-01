@@ -11,17 +11,30 @@ package app.routeplanner.core
 class RouteSession(
     stops: List<Stop>,
     packages: List<Pkg> = emptyList(),
-    var navApp: NavApp = NavApp.GOOGLE,
-    var autoNavigate: Boolean = false,
+    navApp: NavApp = NavApp.GOOGLE,
+    autoNavigate: Boolean = false,
     private val now: () -> Long = System::currentTimeMillis,
     startMs: Long? = null,
 ) {
+    /**
+     * Called after any change to the route's state (stops, packages, the cursor, start/end, names, flags). The app's
+     * SessionStore uses it to save and redraw, so a caller that changes the route can't forget to. May fire several
+     * times for one action; the listener is expected to coalesce.
+     */
+    var onChanged: (() -> Unit)? = null
+    private fun changed() { onChanged?.invoke() }
+
     var stops: List<Stop> = stops
-        private set
+        private set(v) { field = v; changed() }
     var packages: List<Pkg> = packages
-        private set
+        private set(v) { field = v; changed() }
     var cursor: Int = stops.indexOfFirst { it.status == Status.PENDING }.coerceAtLeast(0)
-        private set
+        private set(v) { field = v; changed() }
+
+    var navApp: NavApp = navApp
+        set(v) { if (field != v) { field = v; changed() } }
+    var autoNavigate: Boolean = autoNavigate
+        set(v) { if (field != v) { field = v; changed() } }
 
     /** Highest address ID handed out so far (IDs are never reused, even after a removal). */
     private var entrySeq = 0
@@ -34,26 +47,35 @@ class RouteSession(
 
     /** Name this route was saved under, and the library entry it came from / was saved to (null = never saved). */
     var name: String? = null
+        set(v) { if (field != v) { field = v; changed() } }
     var savedId: String? = null
+        set(v) { if (field != v) { field = v; changed() } }
 
     /** Epoch millis of route-clock zero. */
     var startMs: Long = startMs ?: now()
+        set(v) { if (field != v) { field = v; changed() } }
 
     /** Driver tapped "Start route": the next-stop card replaces the planning controls. */
     var started: Boolean = false
+        set(v) { if (field != v) { field = v; changed() } }
 
     /** Stops were added/moved/edited since the last optimize, so ETAs are stale. */
     var dirty: Boolean = false
+        set(v) { if (field != v) { field = v; changed() } }
 
     /** Route start (depot). Required before planning; null only for routes saved by old versions. */
     var start: RouteStart? = null
+        set(v) { if (field != v) { field = v; changed() } }
 
     /** Where the route ends (default: at the last stop). */
     var end: RouteEnd = RouteEnd()
+        set(v) { if (field != v) { field = v; changed() } }
 
     /** Final leg to the end point from the last plan (0 when the route ends at the last stop). */
     var endLegSec: Int = 0
+        set(v) { if (field != v) { field = v; changed() } }
     var endLegMeters: Int = 0
+        set(v) { if (field != v) { field = v; changed() } }
 
     /** End point for planning, or null when the route just ends at the last stop. */
     fun endPoint(): LatLng? = when (end.mode) {

@@ -217,12 +217,16 @@ object Dialogs {
         val addressInfo: String,
         val addressAttribution: String?,
         val recentCount: Int,
+        val storageInfo: String,
+        val diagnosticsInfo: String,
     )
 
     fun settings(ctx: Context, m: SettingsModel, openPermissions: () -> Unit, importAddresses: () -> Unit, manageRecents: () -> Unit,
-                 importRoads: () -> Unit, openOfflineMaps: () -> Unit, onSave: (SettingsModel) -> Unit) {
+                 importRoads: () -> Unit, openOfflineMaps: () -> Unit, openStorage: () -> Unit, showTips: () -> Unit,
+                 shareDiagnostics: () -> Unit, clearDiagnostics: () -> Unit, onSave: (SettingsModel) -> Unit) {
         val box = ctx.vertical(padH = 24, padV = 8)
-        box.addFull(ctx.button("Permissions & network…", M.attr.materialButtonOutlinedStyle) { openPermissions() }, bottomDp = 8)
+        box.addFull(ctx.button("Permissions & network…", M.attr.materialButtonOutlinedStyle) { openPermissions() }, bottomDp = 4)
+        box.addFull(ctx.button("How it works", M.attr.materialButtonOutlinedStyle) { showTips() }, bottomDp = 8)
         box.addFull(ctx.label(12f, M.attr.colorPrimary, bold = true).apply { text = "NAVIGATION" })
         val nav = toggleGroup(ctx, listOf("Google Maps", "Waze"), if (m.waze) "Waze" else "Google Maps").apply { isSelectionRequired = true }
         box.addFull(nav, topDp = 4)
@@ -278,6 +282,17 @@ object Dialogs {
                 text = a + "\nLicense: per-record public domain (LicenseRef-Public-Domain-US); the NAD Access and Usage License text has not been verified."
             }, topDp = 4)
         }
+        box.addFull(ctx.label(12f, M.attr.colorPrimary, bold = true).apply { text = "STORAGE" }, topDp = 16)
+        box.addFull(ctx.label(14f).apply { text = m.storageInfo })
+        box.addFull(ctx.button("Manage storage…", M.attr.materialButtonOutlinedStyle) { openStorage() }, topDp = 4)
+
+        box.addFull(ctx.label(12f, M.attr.colorPrimary, bold = true).apply { text = "DIAGNOSTICS" }, topDp = 16)
+        box.addFull(ctx.label(14f).apply { text = m.diagnosticsInfo })
+        box.addFull(ctx.label(13f, M.attr.colorOnSurfaceVariant).apply {
+            text = "If the app crashes, a short report is kept here: versions, the device model, where in the code it failed (never what you typed) and recent log lines. It leaves the phone only if you share it."
+        })
+        box.addFull(ctx.button("Share diagnostic log", M.attr.materialButtonOutlinedStyle) { shareDiagnostics() }, topDp = 4)
+        box.addFull(ctx.button("Clear crash records", M.attr.borderlessButtonStyle) { clearDiagnostics() })
         MaterialAlertDialogBuilder(ctx).setTitle("Settings").setView(ScrollView(ctx).apply { addView(box) })
             .setPositiveButton("Save") { _, _ ->
                 m.waze = nav.value() == "Waze"

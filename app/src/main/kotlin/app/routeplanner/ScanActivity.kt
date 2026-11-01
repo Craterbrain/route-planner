@@ -138,7 +138,7 @@ class ScanActivity : AppCompatActivity() {
             runCatching {
                 provider.unbindAll()
                 provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, use, analysis)
-            }.onFailure { Log.w(NetStatus.TAG, "scan: camera bind failed: $it"); Toast.makeText(this, "Camera unavailable", Toast.LENGTH_LONG).show(); finish() }
+            }.onFailure { AppLog.w("scan: camera bind failed: $it"); Toast.makeText(this, "Camera unavailable", Toast.LENGTH_LONG).show(); finish() }
         }, ContextCompat.getMainExecutor(this))
     }
 

@@ -80,7 +80,7 @@ object LocationFix {
                     cancels += { lm.removeUpdates(l) }
                     @Suppress("DEPRECATION") lm.requestSingleUpdate(p, l, Looper.getMainLooper())
                 }
-            }.onFailure { Log.w(NetStatus.TAG, "location: provider $p failed: $it") }
+            }.onFailure { AppLog.w("location: provider $p failed: $it") }
         }
         main.postDelayed({
             val last = lastKnown(ctx)

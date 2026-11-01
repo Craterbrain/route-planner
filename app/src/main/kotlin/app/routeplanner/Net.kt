@@ -79,7 +79,7 @@ object NetStatus {
                 val errors = listOfNotNull(reachable(MAP_STYLE_LIGHT), reachable(geocoderBase.ifBlank { PhotonGeocoder.DEFAULT_URL }))
                 if (errors.isEmpty()) Result(State.OK) else Result(State.UNREACHABLE, errors.joinToString("; "))
             }
-            if (r.state != State.OK) Log.w(TAG, "network check: ${r.state} ${r.detail}")
+            if (r.state != State.OK) AppLog.w("network check: ${r.state} ${r.detail}")
             last = r
             running = false
             fire()

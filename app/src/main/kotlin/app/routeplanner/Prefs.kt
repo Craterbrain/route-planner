@@ -114,6 +114,11 @@ class Prefs(ctx: Context) {
         o.keys().asSequence().mapNotNull { k -> o.optJSONObject(k)?.let { k to LatLng(it.getDouble("lat"), it.getDouble("lng")) } }.toMap()
     }.getOrDefault(emptyMap()).also { pinsCache = it }
 
+    /** The newest crash the driver has already been told about, so the "crashed last time" prompt shows once. */
+    var seenCrashAt: Long
+        get() = sp.getLong("seenCrashAt", 0L)
+        set(v) = sp.edit().putLong("seenCrashAt", v).apply()
+
     /** Show the MapLibre map above the stop list (off = list only, no tile downloads). */
     var showMap: Boolean
         get() = sp.getBoolean("showMap", true)

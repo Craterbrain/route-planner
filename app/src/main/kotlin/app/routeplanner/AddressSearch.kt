@@ -68,7 +68,7 @@ class AddressSearch(ctx: Context, private val prefs: Prefs, private val bias: ()
         val r = chain.suggest(query, bias(), limit)
         val googleTrouble = google != null && (SuggestSource.GOOGLE in r.unhealthy || r.failures.any { it.first == SuggestSource.GOOGLE })
         val note = if (googleTrouble) GOOGLE_DOWN else null
-        r.failures.forEach { (src, e) -> Log.w(NetStatus.TAG, "suggest: ${src.caption} failed: ${e.javaClass.simpleName}") } // never the query
+        r.failures.forEach { (src, e) -> AppLog.w("suggest: ${src.caption} failed: ${e.javaClass.simpleName}") } // never the query
         return when {
             r.items.isNotEmpty() -> Outcome.Found(r.items, r.answeredBy!!, note)
             r.failures.any { it.first == SuggestSource.OSM } -> Outcome.Failed(failureMessage(r.failures.last().second))

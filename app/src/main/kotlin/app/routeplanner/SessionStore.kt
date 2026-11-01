@@ -25,8 +25,31 @@ object SessionStore {
     private fun file(ctx: Context) = File(ctx.filesDir, "route.json")
 
     fun set(ctx: Context, s: RouteSession?) {
-        session = s
+        attach(ctx, s)
         commit(ctx)
+    }
+
+    // Auto-save: the open session tells us whenever anything about it changes, so no caller has to remember to
+    // commit(). Changes made in one go (an action touches stops, packages and the cursor) are coalesced into a single
+    // save + redraw at the end of the current main-thread turn. An explicit commit() still works and settles it at once.
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+    @android.annotation.SuppressLint("StaticFieldLeak") // the application context, which lives as long as the process
+    private var appCtx: Context? = null
+    private var changePending = false
+    private var changePosted = false
+    private val flush = Runnable {
+        changePosted = false
+        if (changePending) appCtx?.let { commit(it) }
+    }
+
+    private fun attach(ctx: Context, s: RouteSession?) {
+        appCtx = ctx.applicationContext
+        session?.onChanged = null
+        session = s
+        s?.onChanged = {
+            changePending = true
+            if (!changePosted) { changePosted = true; main.post(flush) }
+        }
     }
 
     // One writer thread, so saves land in order. Each commit encodes on the caller's thread (the session is only
@@ -34,8 +57,9 @@ object SessionStore {
     private val writer = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "route-writer") }
     private val latest = java.util.concurrent.atomic.AtomicInteger()
 
-    /** Persist and notify; call after every mutation of [session]. The notification is immediate, the disk write is not. */
+    /** Persist and notify now. Optional after a mutation (the session's change hook does it at the end of the turn); the notification is immediate, the disk write is not. */
     fun commit(ctx: Context) {
+        changePending = false
         val f = file(ctx)
         val json = session?.let { encode(it).toString() } // null = no route: delete the file
         val version = latest.incrementAndGet()
@@ -52,13 +76,13 @@ object SessionStore {
                 tmp.writeText(json)
                 if (!tmp.renameTo(f)) { f.delete(); tmp.renameTo(f) }
             }
-        }.onFailure { android.util.Log.w(NetStatus.TAG, "route save failed: ${it.javaClass.simpleName}") }
+        }.onFailure { AppLog.w("route save failed: ${it.javaClass.simpleName}") }
     }
 
     fun load(ctx: Context) {
         if (session != null) return
         val f = file(ctx)
-        if (f.exists()) session = runCatching { decode(JSONObject(f.readText())) }.getOrNull()
+        if (f.exists()) attach(ctx, runCatching { decode(JSONObject(f.readText())) }.getOrNull())
     }
 
     /** Runs a session action; launches the returned nav link (auto-navigate) from any context. */

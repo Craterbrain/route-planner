@@ -75,7 +75,7 @@ object AddressPack {
         if (db == null || s != stamp) {
             db?.close()
             db = runCatching { open(f).also { cachedMeta = validate(it) } }
-                .onFailure { Log.w(NetStatus.TAG, "address pack unusable: $it") }.getOrNull()
+                .onFailure { AppLog.w("address pack unusable: $it") }.getOrNull()
             stamp = s
         }
         return db

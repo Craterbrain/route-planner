@@ -50,25 +50,25 @@ object GoogleTransport {
         val app = ctx.applicationContext
         runCatching {
             CronetProviderInstaller.installProvider(app).addOnCompleteListener { task ->
-                if (!task.isSuccessful) { Log.i(NetStatus.TAG, "google: Play services Cronet unavailable (${task.exception?.javaClass?.simpleName}); plain HTTP"); return@addOnCompleteListener }
-                runCatching { buildEngine(app) }.onFailure { Log.w(NetStatus.TAG, "google: Cronet engine failed: $it; plain HTTP") }
+                if (!task.isSuccessful) { AppLog.i("google: Play services Cronet unavailable (${task.exception?.javaClass?.simpleName}); plain HTTP"); return@addOnCompleteListener }
+                runCatching { buildEngine(app) }.onFailure { AppLog.w("google: Cronet engine failed: $it; plain HTTP") }
             }
-        }.onFailure { Log.i(NetStatus.TAG, "google: no Play services Cronet ($it); plain HTTP") }
+        }.onFailure { AppLog.i("google: no Play services Cronet ($it); plain HTTP") }
     }
 
     private fun buildEngine(ctx: Context) {
         val provider = CronetProvider.getAllProviders(ctx).firstOrNull { it.name == CronetProviderInstaller.PROVIDER_NAME && it.isEnabled }
-            ?: run { Log.i(NetStatus.TAG, "google: Play services Cronet provider not enabled; plain HTTP"); return }
+            ?: run { AppLog.i("google: Play services Cronet provider not enabled; plain HTTP"); return }
         val e = provider.createBuilder()
             .enableHttpCache(CronetEngine.Builder.HTTP_CACHE_DISABLED, 0)
             .enableHttp2(true)
             .enableQuic(true)
             .build()
         val major = GoogleWeb.majorFrom(e.versionString)
-        if (major == null) { e.shutdown(); Log.w(NetStatus.TAG, "google: unknown Cronet version; plain HTTP"); return }
+        if (major == null) { e.shutdown(); AppLog.w("google: unknown Cronet version; plain HTTP"); return }
         engine = e
         cronetMajor = major
-        Log.i(NetStatus.TAG, "google: using Cronet $major")
+        AppLog.i("google: using Cronet $major")
     }
 
     /**
