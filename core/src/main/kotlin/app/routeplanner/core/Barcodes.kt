@@ -34,6 +34,18 @@ object Barcodes {
         return Shown(text, (text.length - 4).coerceAtLeast(0))
     }
 
+    private val AUTO_ID = Regex("""\d+-\d+""")
+
+    /**
+     * The last four letters/digits of a package's tracking number, for a badge: from its longest scanned code, or from
+     * its id when that is a real number (an imported tracking number) rather than an automatic "<ID>-<n>". Null if none.
+     */
+    fun lastFour(p: Pkg): String? {
+        val source = p.codes.maxByOrNull { clean(it).length } ?: p.id.takeUnless { AUTO_ID.matches(it) } ?: return null
+        val c = clean(source)
+        return c.takeLast(4).takeIf { c.length >= 4 }
+    }
+
     /** What matched for a scan: the package(s) it points to, and whether that is certain. */
     class Match(val packages: List<Pkg>, val certain: Boolean)
 

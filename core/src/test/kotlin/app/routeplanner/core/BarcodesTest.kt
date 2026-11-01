@@ -59,4 +59,12 @@ class BarcodesTest {
         assertEquals("FD1", tiny.text); assertEquals(0, tiny.highlightStart)
         assertEquals("…ABCDEFGHIJKL", Barcodes.shown("  1234567ABCDEFGHIJKL ").text)
     }
+
+    @Test fun lastFourComesFromTheLongestCodeOrARealPackageId() {
+        assertEquals("4749", Barcodes.lastFour(Pkg("1-1", "s", codes = listOf("FSD1", "420385729361289724269887364749"))))
+        assertEquals("0138", Barcodes.lastFour(Pkg("1-2", "s", codes = listOf("7946 4479 0138"))))
+        assertEquals("6784", Barcodes.lastFour(Pkg("1Z999AA10123456784", "s")))   // an imported tracking number is the id
+        assertNull(Barcodes.lastFour(Pkg("7-1", "s")))                              // automatic id, nothing scanned
+        assertNull(Barcodes.lastFour(Pkg("7-1", "s", codes = listOf("A1"))))        // too short to mean anything
+    }
 }

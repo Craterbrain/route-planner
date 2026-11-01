@@ -152,3 +152,13 @@ const val WINDOW_OPEN_END = 10_000_000L
 
 /** "Total packages: 2". Every address holds at least one package. */
 fun totalPackages(n: Int) = "Total packages: $n"
+
+/** The last four characters of a tracking number as a badge: primary fill, bold, easy to match against the label. */
+fun Context.lastFourBadge(text: String) = TextView(this).apply {
+    this.text = text
+    textSize = 14f
+    setTypeface(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD)
+    setTextColor(color(M.attr.colorOnPrimary))
+    background = roundRect(M.attr.colorPrimary, 10)
+    setPadding(dp(9), dp(3), dp(9), dp(3))
+}

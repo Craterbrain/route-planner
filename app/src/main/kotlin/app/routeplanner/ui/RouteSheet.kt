@@ -241,9 +241,13 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
         if (pkgs.isNotEmpty()) {
             val pf = ctx.vertical(padH = 12, padV = 8).apply { background = ctx.roundRect(M.attr.colorSurface, 14) }
             pf.addFull(ctx.label(11f, M.attr.colorOnSurfaceVariant, bold = true).apply { text = "PACKAGE FINDER" })
-            for (p in pkgs) pf.addFull(ctx.label(15f).apply {
-                text = "${p.id}  ·  ${p.truckZone ?: "no location set"}"
-            }, topDp = 2)
+            for (p in pkgs) {
+                // "45-1 · Back Left Shelf" with the last four of its tracking number as a badge on the right.
+                val line = ctx.horizontal()
+                line.addWeighted(ctx.label(15f).apply { text = "${p.id}  ·  ${p.truckZone ?: "no location set"}" })
+                Barcodes.lastFour(p)?.let { line.addView(ctx.lastFourBadge(it)) }
+                pf.addFull(line, topDp = 4)
+            }
             body.addFull(pf, topDp = 8)
         }
 
