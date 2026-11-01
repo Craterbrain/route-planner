@@ -201,8 +201,9 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
         val c = s.current ?: return
         // Stop (back to planning, progress kept) and the route menu, on the right above the card.
         val bar = ctx.horizontal()
-        bar.addWeighted(android.view.View(ctx))
-        bar.addView(ctx.compact(ctx.button("Stop", M.attr.materialButtonOutlinedStyle, icon = R.drawable.ic_stop) { host.stopRoute() }))
+        bar.addWeighted(android.widget.Space(ctx)) // not a bare View: a wrap_content View fills all the space it is offered
+        // Not compact(): its auto-sizing text needs a fixed-width slot and clips a wrap-content button.
+        bar.addView(ctx.button("Stop", M.attr.materialButtonOutlinedStyle, icon = R.drawable.ic_stop) { host.stopRoute() })
         val more = ctx.iconButton(R.drawable.ic_more_vert, "Route menu") {}
         more.setOnClickListener { host.routeMenu(more) }
         bar.addView(more)
