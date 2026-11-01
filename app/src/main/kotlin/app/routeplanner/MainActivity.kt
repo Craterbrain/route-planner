@@ -394,11 +394,15 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         roadKey = points
         m.setRoadPath(null) // a stale line would highlight the wrong roads; the dashed one shows meanwhile
         if (points.size < 2) return
-        val roads = Routing.roads(this, prefs) ?: return
+        val roads = Routing.roads(this, prefs)
+        if (roads == null) { AppLog.w("roads: no road data or server set up; drawing straight lines"); return }
         val mine = ++roadGen
         actions.background({ roads.path(points) }) { r ->
             if (mine != roadGen || isFinishing || isDestroyed) return@background
-            m.setRoadPath(r.getOrNull()?.takeIf { it.roadLegs > 0 }?.path)
+            val res = r.getOrNull()
+            if (res == null) AppLog.w("roads: lookup failed", r.exceptionOrNull())
+            else AppLog.i("roads: ${res.roadLegs} of ${res.legs} legs followed roads")
+            m.setRoadPath(res?.takeIf { it.roadLegs > 0 }?.path)
         }
     }
 
