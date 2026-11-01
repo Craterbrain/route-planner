@@ -21,6 +21,19 @@ object Barcodes {
         return minOf(x.length, y.length) >= LONG && (x.contains(y) || y.contains(x))
     }
 
+    /** How a code is shown on screen: [text] is its end only (long values are cut at the front and start with "…"); [highlightStart] is where its last four characters begin. */
+    class Shown(val text: String, val highlightStart: Int)
+
+    /**
+     * A tracking number is long and its start is mostly noise ("420" + ZIP + ...), while a driver compares the end
+     * by eye, so show only the last [keep] characters and let the caller emphasise the last four.
+     */
+    fun shown(code: String, keep: Int = 12): Shown {
+        val c = code.trim()
+        val text = if (c.length > keep) "…" + c.takeLast(keep) else c
+        return Shown(text, (text.length - 4).coerceAtLeast(0))
+    }
+
     /** What matched for a scan: the package(s) it points to, and whether that is certain. */
     class Match(val packages: List<Pkg>, val certain: Boolean)
 

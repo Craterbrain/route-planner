@@ -83,6 +83,8 @@ Without network the route list, stop editing, delivery/proof, the floating butto
 
 ## Not yet verified on a device
 
+**0.8.4**: in stop details a package's scanned code is shown by its end only ("Scanned: …269887364749": the last 12 characters, cut at the front where the "420"+ZIP prefix is just noise), with the last four characters bold, larger and in the accent color so they can be matched to the label at a glance (`Barcodes.shown`).
+
 **0.8.3**: stop list rows are now full width, so the time and the drag handle sit at the right edge (RecyclerView had been sizing each row to its content), and the address ID is a badge (tertiary container on its on-color) beside the package details instead of grey text.
 
 **0.8.2**: **The route is drawn along the roads it drives**, not as dashed lines between stops: a bold line in the theme's primary color with a light outline, over the roads. It comes from Valhalla's `/route` (on-device when road data is imported, else the optional server URL), asked for in windows of 15 points; if a window fails each leg is asked for alone, and a leg that still can't be routed (a point nowhere near a road) is a straight line, so the line is never broken. It is worked out in the background whenever the start, the remaining stops or the end change, and the dashed line shows meanwhile and whenever there is no road data. Only the remaining route is drawn (finished stops drop off). Tested against a real Valhalla 3.9.1 response (recorded on the Tennessee tiles) and a fake server for chunking and fallback; the drawing itself has not been seen on a phone.

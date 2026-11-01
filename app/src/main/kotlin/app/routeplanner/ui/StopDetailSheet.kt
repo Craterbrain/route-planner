@@ -16,6 +16,12 @@ import app.routeplanner.R
 import app.routeplanner.SessionStore
 import app.routeplanner.color
 import app.routeplanner.core.*
+import android.graphics.Typeface
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
+import android.text.style.RelativeSizeSpan
+import android.text.style.StyleSpan
 import com.google.android.material.R as M
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
@@ -150,7 +156,7 @@ class StopDetailSheet(private val act: Activity, private val host: RouteHost, pr
         val pkgs = s.finder(st)
         body.addFull(act.label(15f, bold = true).apply { text = totalPackages(pkgs.size) })
         if (pkgs.isEmpty()) body.addFull(act.label(14f, M.attr.colorOnSurfaceVariant).apply { text = "No packages listed for this stop." })
-        for (p in pkgs) body.addFull(row("${p.id}\n${p.truckZone ?: "Location not set"}" + codesLine(p), "Set location") {
+        for (p in pkgs) body.addFull(row(packageText(p), "Set location") {
             Dialogs.zone(act, p.id, p.truckZone) { z -> session()?.setZone(p.id, z); commit(); render() }
         })
 
@@ -196,7 +202,7 @@ class StopDetailSheet(private val act: Activity, private val host: RouteHost, pr
     private fun time(ms: Long) = android.text.format.DateFormat.getTimeFormat(act).format(java.util.Date(ms))
 
     /** A text line with a trailing action button. */
-    private fun row(text: String, action: String, onClick: () -> Unit) = act.horizontal().apply {
+    private fun row(text: CharSequence, action: String, onClick: () -> Unit) = act.horizontal().apply {
         addWeighted(act.label(15f).apply { this.text = text })
         addView(act.button(action, M.attr.borderlessButtonStyle) { onClick() })
     }
@@ -268,12 +274,24 @@ class StopDetailSheet(private val act: Activity, private val host: RouteHost, pr
         }.setNegativeButton("Cancel", null).show()
     }
 
-    /** "Scanned: 9361… (+3 more)": what the camera read from the parcel, shown so a driver can compare it by eye. */
-    private fun codesLine(p: Pkg): String {
-        if (p.codes.isEmpty()) return ""
+    /**
+     * A package's row: id, truck location, and what the camera read, cut at the front ("Scanned: …269887364749") with the
+     * last four characters bold and in the accent color, so they can be compared with the label by eye.
+     */
+    private fun packageText(p: Pkg): CharSequence {
+        val sb = SpannableStringBuilder("${p.id}\n${p.truckZone ?: "Location not set"}")
+        if (p.codes.isEmpty()) return sb
         // The longest value is almost always the tracking number.
-        val main = p.codes.maxByOrNull { it.length }!!
-        return "\nScanned: " + (if (main.length > 28) main.take(26) + "…" else main) + if (p.codes.size > 1) " (+${p.codes.size - 1} more)" else ""
+        val shown = Barcodes.shown(p.codes.maxByOrNull { it.length }!!)
+        sb.append("\nScanned: ")
+        val from = sb.length + shown.highlightStart
+        sb.append(shown.text)
+        val flags = Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+        sb.setSpan(ForegroundColorSpan(act.color(M.attr.colorPrimary)), from, sb.length, flags)
+        sb.setSpan(StyleSpan(Typeface.BOLD), from, sb.length, flags)
+        sb.setSpan(RelativeSizeSpan(1.15f), from, sb.length, flags)
+        if (p.codes.size > 1) sb.append("  (+${p.codes.size - 1} more)")
+        return sb
     }
 
     /** Downsampled proof photo (never loads the full camera image). */

@@ -48,4 +48,15 @@ class BarcodesTest {
         assertEquals("1-2", s.findPackage("9400 1000 0000 0000 0000 09")!!.first.id)
         assertEquals(st.id, s.stopOf(second)!!.id)
     }
+
+    @Test fun longCodesAreCutAtTheFrontAndTheLastFourAreMarked() {
+        val long = Barcodes.shown("420385729361289724269887364749")
+        assertEquals("…269887364749", long.text) // "…" + the last 12 characters
+        assertEquals("4749", long.text.substring(long.highlightStart))
+        val short = Barcodes.shown("794644790138")                 // 12 characters: shown whole
+        assertEquals("794644790138", short.text); assertEquals("0138", short.text.substring(short.highlightStart))
+        val tiny = Barcodes.shown("FD1")
+        assertEquals("FD1", tiny.text); assertEquals(0, tiny.highlightStart)
+        assertEquals("…ABCDEFGHIJKL", Barcodes.shown("  1234567ABCDEFGHIJKL ").text)
+    }
 }
