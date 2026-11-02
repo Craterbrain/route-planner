@@ -55,19 +55,20 @@ function drawLabel(l) {
   txt(root, l.routeCode, 0, 154, 16.5, { center: true, cx: 263 });
   txt(root, "ADDRESS SERVICE REQUESTED", 6, 208, 11);
 
+  // The tracking barcode and the two small Data Matrix codes beside the address carry the same number (420 + ZIP + tracking).
+  const tn = `420${l.zip5}${l.tracking}`;
   // Small Data Matrix and the recipient (the text the scanner has to read).
-  const dm = `~1${l.zip5}${l.zip4}${l.tracking}${l.serial}`;
-  bar(root, { bcid: "datamatrix", text: dm, scale: 4 }, 14, 236, 46, 46);
+  bar(root, { bcid: "datamatrix", text: tn, scale: 4 }, 14, 236, 46, 46);
   txt(root, l.name, 76, 226, 16.5);
   txt(root, l.street, 76, 240.5, 16.5);
   let y = 255;
   if (l.unit) { txt(root, l.unit, 76, y, 16.5); y += 14.5; }
   txt(root, `${l.city} ${l.state} ${l.zip5}\u2013${l.zip4}`, 76, y, 16.5);
-  bar(root, { bcid: "datamatrix", text: `${l.serial}${l.zip5}${l.zip4}${rnd(12, "0123456789")}`, scale: 4 }, 385, 304, 47, 47);
+  bar(root, { bcid: "datamatrix", text: tn, scale: 4 }, 385, 304, 47, 47);
 
   rule(root, 0, 353, 480, 1.5);
   txt(root, "TRACKING # eVS", 81, 358, 15);
-  bar(root, { bcid: "code128", text: `^FNC1420${l.zip5}${l.tracking}`, parsefnc: true, scale: 2, height: 22, includetext: false }, 14, 383, 352, 74);
+  bar(root, { bcid: "code128", text: `^FNC1${tn}`, parsefnc: true, scale: 2, height: 22, includetext: false }, 14, 383, 352, 74);
   txt(root, group(l.tracking, 4), 110, 466, 18);
   rule(root, 0, 493, 480, 1.5);
 
@@ -123,7 +124,7 @@ function applyDamage() {
 // ---- Printer defects ------------------------------------------------------------------------------------------
 
 function printerDefects(r, fade, streak, feed) {
-  const label = $("label"), cv = $("defects"), g = cv.getContext("2d");
+  const label = $("content"), cv = $("defects"), g = cv.getContext("2d");
   g.clearRect(0, 0, W, H);
 
   // Uneven feed: vertical displacement that depends only on the row. Bands compress (bunch) where it falls quickly.

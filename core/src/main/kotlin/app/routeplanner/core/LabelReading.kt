@@ -1,29 +1,36 @@
-package app.routeplanner
+package app.routeplanner.core
 
-import android.graphics.Rect
-import com.google.mlkit.vision.text.Text
-
-/** Helpers shared by the live scanner and the debug image path. */
+/**
+ * Shared by the live scanner, the label bench app and the JVM tests: which text lines belong to the label and in what order.
+ * Pure Kotlin on purpose, so the exact code that runs on the phone can be replayed on a PC against recorded recognizer output.
+ */
 object LabelReading {
+    /** A text line's bounding box in the upright image, in pixels. */
+    class Box(val left: Int, val top: Int, val right: Int, val bottom: Int) {
+        val centerX get() = (left + right) / 2
+        val centerY get() = (top + bottom) / 2
+        val height get() = bottom - top
+    }
+
     /**
-     * Lines top to bottom, taken one by one rather than block by block: ML Kit's own grouping can put a wider line (the
+     * Lines top to bottom, taken one by one rather than block by block: the recognizer's own grouping can put a wider line (the
      * city line with its ZIP+4) ahead of the street line above it, and then no address is found. Lines that share a row
      * (a box printed beside an address) go left to right.
      */
-    fun order(lines: List<Text.Line>): List<Text.Line> {
-        val sorted = lines.filter { it.boundingBox != null }.sortedBy { it.boundingBox!!.centerY() }
-        val out = ArrayList<Text.Line>()
-        var row = ArrayList<Text.Line>()
-        fun flush() { out += row.sortedBy { it.boundingBox!!.left }; row = ArrayList() }
+    fun <T> order(lines: List<T>, box: (T) -> Box?): List<T> {
+        val sorted = lines.filter { box(it) != null }.sortedBy { box(it)!!.centerY }
+        val out = ArrayList<T>()
+        var row = ArrayList<T>()
+        fun flush() { out += row.sortedBy { box(it)!!.left }; row = ArrayList() }
         for (l in sorted) {
-            val b = l.boundingBox!!
+            val b = box(l)!!
             // Same row only when it sits beside a line already in the row: nearly the same height on the page and no
             // horizontal overlap with it. Stacked lines (name above street above city) overlap horizontally and so are
             // never merged, however tightly they are set or tilted.
             val beside = row.isNotEmpty() && row.all { r ->
-                val rb = r.boundingBox!!
+                val rb = box(r)!!
                 val noOverlap = b.right <= rb.left || b.left >= rb.right
-                noOverlap && Math.abs(b.centerY() - rb.centerY()) < 0.3f * minOf(b.height(), rb.height())
+                noOverlap && Math.abs(b.centerY - rb.centerY) < 0.3f * minOf(b.height, rb.height)
             }
             if (!beside) flush()
             row += l
@@ -112,10 +119,22 @@ object LabelReading {
         val frac = bestArea.toDouble() / g.size
         if (frac < 0.08 || frac > 0.92) return null           // too small to be a label, or the whole frame is "bright"
         val mask = BooleanArray(g.size); cells.forEach { mask[it] = true }
+        // Print is darker than blank paper, so a block of dense text (the address) can fall below the cut and leave a hole in the
+        // label's shape. Anything not connected to the frame's edge through non-label cells is inside the label: fill it.
+        val outside = BooleanArray(g.size)
+        var sp = 0
+        fun seed(i: Int) { if (!mask[i] && !outside[i]) { outside[i] = true; stack[sp++] = i } }
+        for (x in 0 until gw) { seed(x); seed((gh - 1) * gw + x) }
+        for (y in 0 until gh) { seed(y * gw); seed(y * gw + gw - 1) }
+        while (sp > 0) {
+            val c = stack[--sp]; val cx = c % gw; val cy = c / gw
+            if (cx > 0) seed(c - 1); if (cx < gw - 1) seed(c + 1); if (cy > 0) seed(c - gw); if (cy < gh - 1) seed(c + gw)
+        }
+        for (i in mask.indices) if (!outside[i]) mask[i] = true
         return Region(width, height, cell, gw, gh, mask, rotation)
     }
 
     /** Lines whose centre lies on the label region (all of them when there is none). */
-    fun inside(lines: List<Text.Line>, region: Region?): List<Text.Line> =
-        if (region == null) lines else lines.filter { l -> l.boundingBox?.let { region.contains(it.centerX(), it.centerY()) } ?: false }
+    fun <T> inside(lines: List<T>, region: Region?, box: (T) -> Box?): List<T> =
+        if (region == null) lines else lines.filter { l -> box(l)?.let { region.contains(it.centerX, it.centerY) } ?: false }
 }

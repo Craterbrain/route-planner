@@ -187,4 +187,18 @@ class LabelParserTest {
         assertEquals("214 Lollar Pl Apt 2, Monterey TN 38574", LabelParser.parse("214 LOLLAR PL\nAPT 2\nMONTEREY TN 385744076").primary!!.address)
         assertEquals("214 Lollar Pl, Monterey TN 38574", LabelParser.parse("214 LOLLAR PL\nMONTEREY TN\n385744076").primary!!.address)
     }
+
+    @Test fun anAddressJustAboveTheEndorsementIsTheReturnBlock() {
+        val r = LabelParser.parse(listOf("SAMPLE FULFILLMENT CO", "6276 SAMPLE WAY", "NASHVILLE TN 37201", "RO31", "ADDRESS SERVICE REQUESTED").map { LabelParser.OcrLine(it, 40f) })
+        assertEquals(LabelParser.Role.RETURN, r.primary!!.role)
+        // the recipient below it is still the delivery address and comes first
+        val both = LabelParser.parse(listOf("6276 SAMPLE WAY", "NASHVILLE TN 37201", "ADDRESS SERVICE REQUESTED", "96 MEADOWVIEW LN", "CROSSVILLE TN 38555").map { LabelParser.OcrLine(it, 40f) })
+        assertEquals("96 Meadowview Ln, Crossville TN 38555", both.primary!!.address)
+        assertEquals(LabelParser.Role.RETURN, both.candidates[1].role)
+    }
+
+    @Test fun aMisreadZipDigitStillGivesTheAddress() {
+        assertEquals("96 Meadowview Ln, Crossville TN", LabelParser.parse("96 MEADOWVIEW LN\nCROSSVILLE TN ${'$'}8555-7116").primary!!.address)
+        assertEquals("96 Meadowview Ln, Crossville TN 38555", LabelParser.parse("96 MEADOWVIEW LN\nCROSSVILLE TN 3B555").primary!!.address)
+    }
 }

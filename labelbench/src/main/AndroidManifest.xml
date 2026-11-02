@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:label="Label bench" android:allowBackup="false" android:theme="@android:style/Theme.Translucent.NoTitleBar">
+        <!-- Started from a PC by tools/label-lab/bench.py. -->
+        <activity android:name=".BenchActivity" android:exported="true" />
+    </application>
+</manifest>

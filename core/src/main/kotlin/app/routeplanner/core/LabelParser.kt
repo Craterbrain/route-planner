@@ -45,7 +45,7 @@ object LabelParser {
     // ZIP+4 may be written with a hyphen, en dash or em dash, with or without spaces around it.
     // Whatever follows the five-digit ZIP on that line (the "-6923" extension, or OCR's idea of it: a dropped, mangled or
     // misread dash and digits, stray marks) is ignored, and removed from the address handed to the geocoder.
-    private val CITY_LINE = Regex("""^(.*?[A-Za-z].*?)[,\s]+([A-Za-z]{2})\s+(\d{5})(?:\d{4}(?!\d)|(?!\d))[^\n]{0,16}$""")
+    private val CITY_LINE = Regex("""^(.*?[A-Za-z].*?)[,\s]+([A-Za-z]{2})\s+([0-9${'$'}SsOoIlB]{5})(?:[0-9]{4}(?![0-9])|(?![0-9]))[^\n]{0,16}$""")
     private val ENDORSEMENT = Regex("""SERVICE\s+REQUESTED|ADDRESS\s+CORRECTION|FORWARDING""", RegexOption.IGNORE_CASE)
     private val STATE_TAIL = Regex("""^.*[A-Za-z].*[,\s]([A-Za-z]{2})$""")
     private val ZIP_HEAD = Regex("""^\d{5}(?:\d{4}(?!\d)|(?!\d))[^\n]{0,16}$""")
@@ -148,6 +148,12 @@ object LabelParser {
             if (RETURN_CUE.containsMatchIn(t)) return Role.RETURN
             if (DELIVER_CUE.containsMatchIn(t)) return Role.DELIVERY
         }
+        // "ADDRESS SERVICE REQUESTED" printed just below an address, before the next one, means this is the return block.
+        for (k in at + 1..minOf(lines.size - 1, at + 5)) {
+            val t = lines[k].text
+            if (STREET_LINE.matches(t) || cityParts(t) != null && k > at + 2) break
+            if (ENDORSEMENT.containsMatchIn(t) && !RETURN_ENDORSEMENT.containsMatchIn(t)) return Role.RETURN
+        }
         return Role.UNKNOWN
     }
 
@@ -183,7 +189,12 @@ object LabelParser {
         val m = CITY_LINE.matchEntire(line) ?: return null
         val st = m.groupValues[2].uppercase()
         if (st !in STATES) return null
-        return m.groupValues[1].trim() to "$st ${m.groupValues[3]}"
+        // OCR can misread a digit of the ZIP ("$8555"): letters that look like digits are mapped back, and a ZIP that is still
+        // not five digits is dropped (the city and state remain). At least three real digits are needed to call it a ZIP at all.
+        val raw = m.groupValues[3]
+        if (raw.count { it.isDigit() } < 3) return null
+        val zip = raw.map { c -> when (c) { 'O', 'o' -> '0'; 'I', 'l' -> '1'; 'S', 's' -> '5'; 'B' -> '8'; else -> c } }.joinToString("")
+        return m.groupValues[1].trim() to (if (zip.all { it.isDigit() }) "$st $zip" else st)
     }
 
     /** ALL-CAPS labels become Title Case; the state code and unit designators stay upper-case. */
@@ -193,7 +204,7 @@ object LabelParser {
         return words.withIndex().joinToString(" ") { (i, w) ->
             when {
                 // Only the token just before the ZIP is the state ("CT" in "1407 KAWA CT" is a street type).
-                w.length == 2 && w in STATES && words.getOrNull(i + 1)?.let { it.length == 5 && it.all(Char::isDigit) } == true -> w
+                w.length == 2 && w in STATES && (words.getOrNull(i + 1)?.let { it.length == 5 && it.all(Char::isDigit) } ?: (i > 1)) -> w
                 w.length == 5 && w.all { it.isDigit() } -> w
                 w.any { it.isDigit() } && w.none { it.isLetter() } -> w
                 w.length <= 2 && w.all { it.isLetter() } && w in setOf("NE", "NW", "SE", "SW") -> w

@@ -156,7 +156,7 @@ class ScanActivity : AppCompatActivity() {
         // Only text on the bright label itself counts; the surroundings are not part of the shipping label.
         val box = runCatching {
             val y = media.planes[0]; val buf = y.buffer; val rs = y.rowStride; val ps = y.pixelStride
-            LabelReading.labelRegion(media.width, media.height, proxy.imageInfo.rotationDegrees) { px, py -> buf.get(py * rs + px * ps).toInt() and 0xFF }
+            app.routeplanner.core.LabelReading.labelRegion(media.width, media.height, proxy.imageInfo.rotationDegrees) { px, py -> buf.get(py * rs + px * ps).toInt() and 0xFF }
         }.getOrNull()
         val wantText = mode == MODE_LABEL
         val pending = java.util.concurrent.atomic.AtomicInteger(if (wantText) 2 else 1)
@@ -172,8 +172,11 @@ class ScanActivity : AppCompatActivity() {
                 .addOnSuccessListener { t ->
                     // Lines in reading order, each with its printed height (the bigger address is the recipient's).
                     if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0)
-                        android.util.Log.i("RPDebug", "cam region=${box?.mask?.count { it }} cells of ${box?.mask?.size}, ${t.textBlocks.sumOf { it.lines.size }} raw lines, ${t.textBlocks.sumOf { b -> b.lines.count { l -> LabelReading.inside(listOf(l), box).isNotEmpty() } }} kept")
-                    val lines = LabelReading.order(LabelReading.inside(t.textBlocks.flatMap { it.lines }, box))
+                        android.util.Log.i("RPDebug", "cam region=${box?.mask?.count { it }} cells of ${box?.mask?.size}, ${t.textBlocks.sumOf { it.lines.size }} raw lines, ${t.textBlocks.sumOf { b -> b.lines.count { l -> l.boundingBox?.let { r -> box == null || box.contains(r.centerX(), r.centerY()) } ?: false } }} kept")
+                    val lines = app.routeplanner.core.LabelReading.let { lr ->
+                        val mk = { l: com.google.mlkit.vision.text.Text.Line -> l.boundingBox?.let { r -> app.routeplanner.core.LabelReading.Box(r.left, r.top, r.right, r.bottom) } }
+                        lr.order(lr.inside(t.textBlocks.flatMap { it.lines }, box, mk), mk)
+                    }
                         .map { LabelParser.OcrLine(it.text, (it.boundingBox?.height() ?: 0).toFloat()) }
                     if (lines.isNotEmpty()) runOnUiThread { onLines(lines) }
                 }

@@ -14,4 +14,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "route-planner"
-include(":core", ":app")
+include(":core", ":app", ":labelbench")

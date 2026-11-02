@@ -46,7 +46,7 @@ class DebugOcr : BroadcastReceiver() {
                 val text = Tasks.await(TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS).process(image))
                 val codes = Tasks.await(BarcodeScanning.getClient().process(image))
                 val raw = text.textBlocks.flatMap { it.lines }
-                val lines = LabelReading.order(raw).map { LabelParser.OcrLine(it.text, (it.boundingBox?.height() ?: 0).toFloat()) }
+                val lines = app.routeplanner.core.LabelReading.let { lr -> lr.order(raw) { l -> l.boundingBox?.let { r -> app.routeplanner.core.LabelReading.Box(r.left, r.top, r.right, r.bottom) } } }.map { LabelParser.OcrLine(it.text, (it.boundingBox?.height() ?: 0).toFloat()) }
                 val result = LabelParser.parse(lines)
                 val out = JSONObject()
                     .put("lines", JSONArray(lines.map { JSONObject().put("text", it.text).put("h", it.height.toInt()) }))
