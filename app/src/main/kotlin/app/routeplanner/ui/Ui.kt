@@ -10,6 +10,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
+import app.routeplanner.appFont
 import app.routeplanner.color
 import app.routeplanner.core.*
 import com.google.android.material.R as M
@@ -23,9 +24,11 @@ fun Context.dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 fun Context.dpf(v: Float) = v * resources.displayMetrics.density
 
 fun Context.label(size: Float, colorAttr: Int = M.attr.colorOnSurface, bold: Boolean = false, lines: Int = 0) = TextView(this).apply {
+    val face = this@label.appFont(bold)
+    if (face != null) typeface = face
     textSize = size
     setTextColor(color(colorAttr))
-    if (bold) setTypeface(typeface, Typeface.BOLD)
+    if (bold && face == null) setTypeface(typeface, Typeface.BOLD)
     if (lines > 0) { maxLines = lines; ellipsize = TextUtils.TruncateAt.END }
 }
 

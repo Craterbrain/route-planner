@@ -9,6 +9,14 @@ import com.google.android.material.color.MaterialColors
 fun Context.themed(): Context =
     DynamicColors.wrapContextIfAvailable(ContextThemeWrapper(ThemeMode.wrap(this), R.style.Theme_RoutePlanner))
 
+/**
+ * The bundled app font (Atkinson Hyperlegible Next), from the single-file resources so bold is the real bold face rather than a
+ * synthesized style on the family. Set on views explicitly where the theme's fontFamily doesn't reach (the overlay service).
+ */
+fun Context.appFont(bold: Boolean = false): android.graphics.Typeface? =
+    runCatching { androidx.core.content.res.ResourcesCompat.getFont(this, if (bold) R.font.atkinson_bold else R.font.atkinson_regular) }
+        .onFailure { AppLog.w("app font failed to load", it) }.getOrNull()
+
 /** Resolves a theme color attribute such as [com.google.android.material.R.attr.colorPrimary]. */
 fun Context.color(attr: Int): Int = MaterialColors.getColor(this, attr, 0)
 

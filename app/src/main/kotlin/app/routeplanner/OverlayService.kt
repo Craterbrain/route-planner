@@ -28,6 +28,7 @@ import androidx.core.app.ServiceCompat
 import app.routeplanner.ui.badgeColors
 import app.routeplanner.ui.badgeText
 import app.routeplanner.ui.dp
+import app.routeplanner.ui.dpf
 import app.routeplanner.ui.label
 import app.routeplanner.ui.roundRect
 import app.routeplanner.core.splitAddress
@@ -54,7 +55,7 @@ class OverlayService : Service() {
     private lateinit var info: LinearLayout
     private lateinit var undoStrip: TextView
     private lateinit var fabIcon: ImageView
-    private lateinit var fabNumber: TextView
+    private lateinit var fabNumber: NumberView
     private lateinit var lp: WindowManager.LayoutParams
     private var expanded = false
     private val main = Handler(Looper.getMainLooper())
@@ -127,12 +128,13 @@ class OverlayService : Service() {
             info.addView(t.label(15f).apply { text = if (s?.done == true) "All stops handled" else "No route" })
             return
         }
-        fabNumber.text = c.optimizedIndex.toString(); fabNumber.visibility = View.VISIBLE; fabIcon.visibility = View.GONE
+        fabNumber.value = c.optimizedIndex.toString(); fabNumber.visibility = View.VISIBLE; fabIcon.visibility = View.GONE
         val colors = t.badgeColors(c, true)
         val top = LinearLayout(t).apply { gravity = Gravity.CENTER_VERTICAL }
         top.addView(TextView(t).apply {
+            t.appFont()?.let { typeface = it }
             text = badgeText(c); textSize = 15f; gravity = Gravity.CENTER
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            t.appFont(bold = true)?.let { typeface = it }
             setTextColor(colors.text)
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(colors.fill) }
         }, LinearLayout.LayoutParams(t.dp(38), t.dp(38)).apply { marginEnd = t.dp(10) })
@@ -145,8 +147,9 @@ class OverlayService : Service() {
         info.addView(top)
         val meta = LinearLayout(t).apply { gravity = Gravity.CENTER_VERTICAL }
         meta.addView(TextView(t).apply {
+            t.appFont()?.let { typeface = it }
             text = "ID ${c.entryNo}"; textSize = 13f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            t.appFont(bold = true)?.let { typeface = it }
             setTextColor(t.color(M.attr.colorOnTertiaryContainer))
             background = t.roundRect(M.attr.colorTertiaryContainer, 10)
             setPadding(t.dp(8), t.dp(2), t.dp(8), t.dp(2))
@@ -177,11 +180,8 @@ class OverlayService : Service() {
                 setColorFilter(t.color(M.attr.colorOnPrimaryContainer))
             }
             addView(fabIcon, FrameLayout.LayoutParams(t.dp(28), t.dp(28), Gravity.CENTER))
-            fabNumber = TextView(t).apply {
-                textSize = 20f; gravity = Gravity.CENTER; visibility = View.GONE
-                setTypeface(typeface, android.graphics.Typeface.BOLD)
-                setTextColor(t.color(M.attr.colorOnPrimaryContainer))
-            }
+            // Drawn with a Paint of our own: a TextView in this overlay window fell back to the phone's font (where 1 looks like I).
+            fabNumber = NumberView(t, t.appFont(bold = true), t.color(M.attr.colorOnPrimaryContainer), t.dpf(22f)).apply { visibility = View.GONE }
             addView(fabNumber, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         }
         info = LinearLayout(t).apply {
@@ -218,6 +218,7 @@ class OverlayService : Service() {
             SessionStore.act(this) { next(); null }
         }, margin = 2)
         undoStrip = TextView(t).apply {
+            t.appFont()?.let { typeface = it }
             textSize = 14f
             setTextColor(t.color(M.attr.colorPrimary))
             gravity = Gravity.CENTER
@@ -402,5 +403,19 @@ class OverlayService : Service() {
 
         fun start(ctx: Context) = ctx.startForegroundService(Intent(ctx, OverlayService::class.java))
         fun stop(ctx: Context) = ctx.stopService(Intent(ctx, OverlayService::class.java))
+    }
+}
+
+/** A centred number drawn with an explicit typeface. */
+class NumberView(ctx: Context, face: android.graphics.Typeface?, color: Int, private val sizePx: Float) : View(ctx) {
+    private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        typeface = face; this.color = color; textSize = sizePx; textAlign = android.graphics.Paint.Align.CENTER
+    }
+    var value: String = ""
+        set(v) { field = v; invalidate() }
+
+    override fun onDraw(c: android.graphics.Canvas) {
+        val y = height / 2f - (paint.descent() + paint.ascent()) / 2f
+        c.drawText(value, width / 2f, y, paint)
     }
 }
