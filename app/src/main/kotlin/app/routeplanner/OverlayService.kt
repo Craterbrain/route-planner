@@ -139,7 +139,11 @@ class OverlayService : Service() {
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(colors.fill) }
         }, LinearLayout.LayoutParams(t.dp(38), t.dp(38)).apply { marginEnd = t.dp(10) })
         val where = LinearLayout(t).apply { orientation = LinearLayout.VERTICAL }
-        where.addView(t.label(21f, bold = true, lines = 2).apply { text = c.address.substringBefore(',') })
+        where.addView(t.label(20f, bold = true, lines = 2).apply {
+            text = c.address.substringBefore(',')
+            // Long street names shrink (down to 15 sp) before they wrap onto a second line.
+            androidx.core.widget.TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(this, 15, 20, 1, android.util.TypedValue.COMPLEX_UNIT_SP)
+        })
         splitAddress(c.address).second.takeIf { it.isNotEmpty() }?.let { city ->
             where.addView(t.label(14f, M.attr.colorOnSurfaceVariant, lines = 1).apply { text = city })
         }
@@ -157,6 +161,9 @@ class OverlayService : Service() {
         meta.addView(t.label(14f, M.attr.colorOnSurfaceVariant).apply { text = totalPackages(s.finder(c).size) })
         info.addView(meta, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = t.dp(6); marginStart = t.dp(48) })
     }
+
+    /** As wide as the screen allows (button and margins left clear), up to 360 dp. */
+    private fun panelWidth(): Int = minOf(t.dp(360), resources.displayMetrics.widthPixels - t.dp(110))
 
     private fun circle(colorAttr: Int) = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(t.color(colorAttr)) }
 
@@ -231,9 +238,9 @@ class OverlayService : Service() {
             background = GradientDrawable().apply { cornerRadius = t.dp(24).toFloat(); setColor(t.color(M.attr.colorSurfaceContainerHigh)) }
             elevation = t.dp(6).toFloat()
             visibility = View.GONE
-            addView(info, LinearLayout.LayoutParams(t.dp(280), LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(info, LinearLayout.LayoutParams(panelWidth(), LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(actions)
-            addView(undoStrip, LinearLayout.LayoutParams(t.dp(280), LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(undoStrip, LinearLayout.LayoutParams(panelWidth(), LinearLayout.LayoutParams.WRAP_CONTENT))
         }
         val r = LinearLayout(t).apply {
             orientation = LinearLayout.HORIZONTAL
