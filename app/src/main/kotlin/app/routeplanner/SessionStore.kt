@@ -122,6 +122,7 @@ object SessionStore {
         .put("startMs", s.startMs)
         .put("started", s.started)
         .put("dirty", s.dirty)
+        .put("optimized", s.optimized)
         .put("start", s.start?.toJson() ?: JSONObject.NULL)
         .put("endMode", s.end.mode.name)
         .put("endPoint", s.end.point?.json() ?: JSONObject.NULL)
@@ -203,6 +204,7 @@ object SessionStore {
             // Version-1 routes were always "in progress": keep showing the driving card.
             it.started = o.optBoolean("started", !o.has("version"))
             it.dirty = o.optBoolean("dirty", false)
+            it.optimized = o.optBoolean("optimized", !it.dirty) // routes saved before this existed: dirty ones were not optimized
             // Version-2 routes and older have no start: the app fills it from Prefs.
             it.start = o.optJSONObject("start")?.let { j -> runCatching { startFromJson(j) }.getOrNull() }
             it.end = RouteEnd(

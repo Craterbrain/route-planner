@@ -61,6 +61,13 @@ class RouteSession(
 
     /** Stops were added/moved/edited since the last optimize, so ETAs are stale. */
     var dirty: Boolean = false
+        set(v) { if (field != v) { field = v; if (v) optimized = false; changed() } }
+
+    /**
+     * True from an Optimize (or an import, which optimizes) until the route is edited again. The map draws the route line
+     * only while this holds: a line through stops in an order nobody has chosen or optimized is misleading.
+     */
+    var optimized: Boolean = false
         set(v) { if (field != v) { field = v; changed() } }
 
     /** Route start (depot). Required before planning; null only for routes saved by old versions. */
@@ -402,6 +409,8 @@ class RouteSession(
         endLegSec = plan.endLegSec
         endLegMeters = plan.endLegMeters
         dirty = false
+        // A plan built by optimizing (cursor reset to the first stop) makes the order a chosen one; a plain re-timing does not.
+        if (!keepCursor) optimized = true
     }
 
     /** Live injection: re-optimizes only pending stops (plus [extra]) from [from]; finished stops are kept. */

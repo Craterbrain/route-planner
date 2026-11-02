@@ -246,4 +246,17 @@ class EditsTest {
         s.back() // at the start: stays
         assertEquals(0, s.cursor)
     }
+
+    @Test fun theRouteLineIsOnlyForAnOptimizedOrder() {
+        val s = session(4)
+        assertFalse("a fresh route has not been optimized", s.optimized)
+        s.applyPlan(s.planRemaining(HaversineMatrix(), depot, optimize = true))
+        assertTrue(s.optimized)
+        s.addStop(Stop("late", "late", LatLng(40.0, -89.8)))        // any route-changing edit
+        assertFalse(s.optimized)
+        s.applyPlan(s.planRemaining(HaversineMatrix(), depot, optimize = false), keepCursor = true)   // re-timing only
+        assertFalse("re-timing does not make the order a chosen one", s.optimized)
+        s.applyPlan(s.planRemaining(HaversineMatrix(), depot, optimize = true))
+        assertTrue(s.optimized)
+    }
 }

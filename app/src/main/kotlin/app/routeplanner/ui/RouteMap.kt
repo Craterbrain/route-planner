@@ -539,12 +539,13 @@ class RouteMap(
         val remaining = head + stops.filter { it.status == Status.PENDING }.map { Point.fromLngLat(it.target.lng, it.target.lat) } +
             listOfNotNull(r.end?.let { Point.fromLngLat(it.lng, it.lat) })
         val road = roadPath
+        val showLine = s?.optimized != false           // unoptimized: no dashed line, no highlighted roads
         st.getSourceAs<GeoJsonSource>(SRC_ROAD)?.setGeoJson(
-            if (road == null) FeatureCollection.fromFeatures(emptyList())
+            if (road == null || !showLine) FeatureCollection.fromFeatures(emptyList())
             else FeatureCollection.fromFeature(Feature.fromGeometry(LineString.fromLngLats(road.map { Point.fromLngLat(it.lng, it.lat) })))
         )
         st.getSourceAs<GeoJsonSource>(SRC_LINE)?.setGeoJson(
-            if (road != null || remaining.size < 2) FeatureCollection.fromFeatures(emptyList())
+            if (road != null || remaining.size < 2 || !showLine) FeatureCollection.fromFeatures(emptyList())
             else FeatureCollection.fromFeature(Feature.fromGeometry(LineString.fromLngLats(remaining)))
         )
 

@@ -451,7 +451,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
 
     /** Start (before any stop is done), the stops still to do, and the end: the line's waypoints, as the map draws them. */
     private fun routePoints(s: RouteSession?, start: RouteStart?): List<LatLng> {
-        if (s == null) return emptyList()
+        if (s == null || !s.optimized) return emptyList()   // no road line for an order nobody has optimized
         val pending = s.stops.filter { it.status == Status.PENDING }
         if (pending.isEmpty()) return emptyList()
         val underway = s.stops.any { it.status != Status.PENDING }
