@@ -43,9 +43,11 @@ object LabelParser {
         "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY", "PR",
     )
     // ZIP+4 may be written with a hyphen, en dash or em dash, with or without spaces around it.
-    private const val DASH = "[-\u2010-\u2015\u2212]"
-    private val CITY_LINE = Regex("""^(.*?[A-Za-z].*?)[,\s]+([A-Za-z]{2})\s+(\d{5})(?:\s*$DASH\s*\d{4})?$""")
-    private val ZIP4_TAIL = Regex("""(\d{5})\s*$DASH\s*\d{4}\s*$""")
+    // OCR often drops or mangles the dash (38555 6923, 38555.6923, 38555_6923, 38555~6923), so any run of spaces and
+    // punctuation (or none) between the ZIP and its four extra digits is accepted.
+    private const val DASH = "[\\s\\p{P}\\u2010-\\u2015\\u2212~_|]*"
+    private val CITY_LINE = Regex("""^(.*?[A-Za-z].*?)[,\s]+([A-Za-z]{2})\s+(\d{5})(?:$DASH\d{4})?\s*$""")
+    private val ZIP4_TAIL = Regex("""(\d{5})$DASH\d{4}\s*$""")
     private val ENDORSEMENT = Regex("""SERVICE\s+REQUESTED|ADDRESS\s+CORRECTION|FORWARDING""", RegexOption.IGNORE_CASE)
     private val STREET_LINE = Regex("""^\d+[A-Za-z]?(?:\s+|-)\S.*[A-Za-z].*$""")
     private val UNIT_LINE = Regex("""^(?:APT|APARTMENT|UNIT|STE|SUITE|LOT|BLDG|#)\.?\s*\S+.*$""", RegexOption.IGNORE_CASE)

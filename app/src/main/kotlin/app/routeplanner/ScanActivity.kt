@@ -60,6 +60,7 @@ class ScanActivity : AppCompatActivity() {
 
     // The ranked addresses from the latest useful frame, and when they were seen (so the list doesn't flicker).
     private var ranked: List<LabelParser.Candidate> = emptyList()
+    private var lastShape = ""
     private var rankedAt = 0L
     private var lastRun = 0L
     private var shownKey = ""
@@ -197,6 +198,9 @@ class ScanActivity : AppCompatActivity() {
     private fun onLines(lines: List<LabelParser.OcrLine>) {
         if (finished) return
         val found = LabelParser.parse(lines).candidates
+        // Counts only, never the text: enough to tell "the label wasn't read" from "read but not recognised as an address".
+        val shape = "${lines.size} lines, ${lines.count { it.text.any(Char::isDigit) }} with digits, ${found.size} addresses ${found.map { it.role.name.lowercase() }}"
+        if (shape != lastShape) { lastShape = shape; app.routeplanner.AppLog.i("scan: $shape") }
         val now = System.currentTimeMillis()
         // A frame that sees fewer addresses than we already hold (say, only the return address) doesn't
         // replace the better-informed list until that list has gone stale.

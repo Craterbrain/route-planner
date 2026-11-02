@@ -119,4 +119,23 @@ class LabelParserTest {
         assertEquals(2, s.packages.size)
         assertEquals("a", s.pendingStopAt("  1  main ST ")?.id)
     }
+
+    @Test fun zipPlusFourSurvivesOcrMangledDashes() {
+        // The recipient's "38555 – 6923" is where OCR goes wrong; losing it left only the return address.
+        for (tail in listOf("38555 – 6923", "38555-6923", "38555 6923", "38555.6923", "38555_6923", "38555~6923", "38555—6923")) {
+            val r = LabelParser.parse(listOf(
+                "CARRIER - LEAVE IF NO RESPONSE" to 26f, "USPS PARCEL SELECT" to 48f,
+                "AMAZON.COM.INDC LLC" to 22f, "900 PATROL RD" to 22f, "JEFFERSONVILLE IN 47130" to 22f, "R012" to 34f,
+                "ADDRESS SERVICE REQUESTED" to 20f,
+                "KIMBERLY BRUBAKER" to 36f, "8681 HIGHWAY 70 E" to 36f, "CROSSVILLE TN $tail" to 36f,
+                "USPS TRACKING # eVS" to 26f,
+            ).map { LabelParser.OcrLine(it.first, it.second) })
+            assertEquals(tail, listOf("8681 Highway 70 E, Crossville TN 38555", "900 Patrol Rd, Jeffersonville IN 47130"), r.addresses)
+            assertTrue(tail, r.candidates[1].isReturn)
+        }
+    }
+
+    @Test fun aStreetLineWithAFiveDigitNumberAndNoZipIsNotACityLine() {
+        assertNull(LabelParser.parse("12345 6789\n8681 HWY 70 E").primary)
+    }
 }
