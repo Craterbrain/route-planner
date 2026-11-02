@@ -24,5 +24,9 @@
         <item name="android:colorBackground">@color/seed_surface</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
+        <!-- Atkinson Hyperlegible Next (OFL): built so 1 / I / l and 0 / O are easy to tell apart, which matters for stop numbers and IDs. -->
+        <item name="android:fontFamily">@font/atkinson</item>
+        <item name="fontFamily">@font/atkinson</item>
+        <item name="android:typeface">normal</item>
     </style>
 </resources>
