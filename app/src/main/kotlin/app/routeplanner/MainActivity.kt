@@ -574,6 +574,21 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
     override fun startRoute() {
         if (!requireStart()) return
         val s = SessionStore.session ?: return
+        // Starting in an order nobody has optimized is probably a slip: say so first (one stop has nothing to reorder).
+        if (!s.optimized && s.stops.count { it.status == Status.PENDING } >= 2) {
+            MaterialAlertDialogBuilder(this).setTitle("Optimize this route first?")
+                .setMessage("The route hasn't been optimized: the stops are still in the order they were added, so the drive may be longer than it needs to be.")
+                .setPositiveButton("Optimize, then start") { _, _ -> actions.replan(optimize = true, showBusy = true) { runOnUiThread { beginRoute() } } }
+                .setNeutralButton("Start as is") { _, _ -> beginRoute() }
+                .setNegativeButton("Cancel", null)
+                .show()
+            return
+        }
+        beginRoute()
+    }
+
+    private fun beginRoute() {
+        val s = SessionStore.session ?: return
         s.start()
         SessionStore.commit(this)
         update() // ETAs from now
