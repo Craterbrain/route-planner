@@ -200,7 +200,17 @@ class ScanActivity : AppCompatActivity() {
         val found = LabelParser.parse(lines).candidates
         // Counts only, never the text: enough to tell "the label wasn't read" from "read but not recognised as an address".
         val shape = "${lines.size} lines, ${lines.count { it.text.any(Char::isDigit) }} with digits, ${found.size} addresses ${found.map { it.role.name.lowercase() }}"
-        if (shape != lastShape) { lastShape = shape; app.routeplanner.AppLog.i("scan: $shape") }
+        if (shape != lastShape) {
+            lastShape = shape
+            app.routeplanner.AppLog.i("scan: $shape")
+            // Each line as its outline only (letters -> A, digits -> 9) with its printed height, so the structure can be
+            // debugged without recording any name, street or number.
+            lines.take(40).forEachIndexed { i, l ->
+                val outline = l.text.map { c -> when { c.isDigit() -> '9'; c.isLetter() -> 'A'; else -> c } }.joinToString("")
+                app.routeplanner.AppLog.i("scan line $i h=${l.height.toInt()}: $outline")
+            }
+            found.forEach { app.routeplanner.AppLog.i("scan address: ${it.role.name.lowercase()} h=${it.height.toInt()}") }
+        }
         val now = System.currentTimeMillis()
         // A frame that sees fewer addresses than we already hold (say, only the return address) doesn't
         // replace the better-informed list until that list has gone stale.
