@@ -468,13 +468,17 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         val roads = Routing.roads(this, prefs)
         if (roads == null) { AppLog.w("roads: no road data or server set up; drawing straight lines"); return }
         val mine = ++roadGen
-        actions.background({ roads.path(points) }) { r ->
-            if (mine != roadGen || isFinishing || isDestroyed) return@background
-            val res = r.getOrNull()
-            if (res == null) AppLog.w("roads: lookup failed", r.exceptionOrNull())
-            else AppLog.i("roads: ${res.roadLegs} of ${res.legs} legs followed roads")
-            m.setRoadPath(res?.takeIf { it.roadLegs > 0 }?.path)
-        }
+        // Wait for the route to stop changing: a lookup per added stop is a lot of work for a line that is replaced a moment later.
+        root.postDelayed({
+            if (mine != roadGen || isFinishing || isDestroyed) return@postDelayed
+            actions.background({ roads.path(points) }) { r ->
+                if (mine != roadGen || isFinishing || isDestroyed) return@background
+                val res = r.getOrNull()
+                if (res == null) AppLog.w("roads: lookup failed", r.exceptionOrNull())
+                else AppLog.i("roads: ${res.roadLegs} of ${res.legs} legs followed roads")
+                m.setRoadPath(res?.takeIf { it.roadLegs > 0 }?.path)
+            }
+        }, 1200)
     }
 
     private fun render() {

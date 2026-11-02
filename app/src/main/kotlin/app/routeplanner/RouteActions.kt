@@ -92,7 +92,20 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
      * Re-plans the remaining stops: [optimize] = new order ("Optimize route"),
      * otherwise keep the order and refresh ETAs/distances ("Update").
      */
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val pendingReplan = Runnable { replan(optimize = false, showBusy = false) }
+
+    /**
+     * Times for a changed route, but only once adding has paused: each replan asks the on-device road engine for a matrix
+     * over every stop, so re-running it after each of 25 quick additions is 25 full runs (and a warm phone).
+     */
+    fun replanSoon() {
+        handler.removeCallbacks(pendingReplan)
+        handler.postDelayed(pendingReplan, REPLAN_DELAY_MS)
+    }
+
     fun replan(optimize: Boolean, showBusy: Boolean, after: ((Solver.Result) -> Unit)? = null) {
+        handler.removeCallbacks(pendingReplan)
         val s = SessionStore.session ?: return
         if (s.stops.none { it.status == Status.PENDING }) { s.dirty = false; SessionStore.commit(act); return }
         val from = origin(s) ?: return
@@ -233,7 +246,7 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
             s.addStop(stop0, pkgs, codes).also { SessionStore.commit(act) }
         }
         val n = SessionStore.session?.stop(stop.id)?.optimizedIndex ?: 1
-        replan(optimize = false, showBusy = false)
+        replanSoon()
         ui.snack("Added stop $n (ID ${stop.entryNo})", "Optimize") { replan(optimize = true, showBusy = true) }
         return stop.id
     }
@@ -309,6 +322,8 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
 
     companion object {
         const val REQ_LOCATION = 2
+        /** How long adding must pause before the route is re-timed. */
+        const val REPLAN_DELAY_MS = 1500L
         /** A new stop farther than this (about 50 miles) from the route start gets a "right place?" question. */
         const val FAR_STOP_M = 80_000.0
         /** With a far stop already accepted, stops within this (70 miles) of the start no longer ask. */
