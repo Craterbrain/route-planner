@@ -10,8 +10,8 @@ body { margin: 0; min-height: 100vh; background: #8a6a45; font-family: system-ui
 #meta { margin-left: auto; font-size: 12px; opacity: .75; }
 #stage { display: flex; justify-content: center; padding: 28px 12px 60px; }
 #scene { perspective: 1400px; }
-#sheet { position: relative; width: 480px; height: 720px; transform-style: preserve-3d; transform-origin: 50% 50%; box-shadow: 0 18px 40px rgba(30,15,0,.55), 0 2px 5px rgba(0,0,0,.4); }
-#paper { position: absolute; inset: 0; background: #f4f3ef; overflow: hidden; }
+#sheet { position: relative; width: 720px; height: 1080px; border-radius: 22px; transform-style: preserve-3d; transform-origin: 50% 50%; box-shadow: 0 18px 40px rgba(30,15,0,.55), 0 2px 5px rgba(0,0,0,.4); }
+#paper { position: absolute; inset: 0; background: #f1f1ee; overflow: hidden; border-radius: 22px; }
 #label { position: absolute; inset: 0; color: #17171a; font-family: "Nimbus Sans Narrow", "Liberation Sans Narrow", "Arial Narrow", Arial, sans-serif; font-weight: 700; }
 #label .abs { position: absolute; white-space: nowrap; line-height: 1.05; }
 #label .rule { position: absolute; background: #17171a; }

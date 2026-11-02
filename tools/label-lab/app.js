@@ -1,6 +1,7 @@
 "use strict";
 addEventListener("error", (e) => { const d = document.createElement("pre"); d.style.cssText = "position:fixed;left:8px;bottom:8px;max-width:90vw;background:#400;color:#fcc;padding:8px;font:12px monospace;z-index:99"; d.textContent = e.message + " @" + e.lineno; document.body.appendChild(d); });
-const W = 480, H = 720;
+const S = 1.5;                 // layout below is drawn in a 480 x 720 space and scaled up
+const W = 480 * S, H = 720 * S;
 const $ = (id) => document.getElementById(id);
 let current = null;
 let seed = 1;
@@ -12,63 +13,80 @@ function txt(parent, text, x, y, size, opts = {}) {
   const d = document.createElement("div");
   d.className = "abs";
   d.textContent = text;
-  d.style.left = x + "px"; d.style.top = y + "px"; d.style.fontSize = size + "px";
-  if (opts.center) { d.style.left = "0"; d.style.width = W + "px"; d.style.textAlign = "center"; }
+  d.style.left = x * S + "px"; d.style.top = y * S + "px"; d.style.fontSize = size * S + "px";
+  if (opts.center) { const cx = (opts.cx ?? 240) * S; d.style.left = "0"; d.style.width = 2 * cx + "px"; d.style.textAlign = "center"; }
+  if (opts.rot) { d.style.transformOrigin = "0 0"; d.style.transform = `rotate(${opts.rot}deg)`; }
+  if (opts.inverse) { d.style.background = "#17171a"; d.style.color = "#f1f1ef"; d.style.padding = `0 ${2 * S}px`; }
   if (opts.spacing) d.style.letterSpacing = opts.spacing;
   if (opts.weight) d.style.fontWeight = opts.weight;
   parent.appendChild(d);
   return d;
 }
-function rule(parent, x, y, w, h) { const d = document.createElement("div"); d.className = "rule"; Object.assign(d.style, { left: x + "px", top: y + "px", width: w + "px", height: h + "px" }); parent.appendChild(d); return d; }
+function rule(parent, x, y, w, h) { const d = document.createElement("div"); d.className = "rule"; Object.assign(d.style, { left: x * S + "px", top: y * S + "px", width: w * S + "px", height: h * S + "px" }); parent.appendChild(d); return d; }
 function bar(parent, opts, x, y, w, h) {
   const c = document.createElement("canvas");
-  bwipjs.toCanvas(c, Object.assign({ scale: 3, backgroundcolor: "F4F3EF" }, opts));
-  Object.assign(c.style, { left: x + "px", top: y + "px", width: w + "px", height: h + "px", imageRendering: "pixelated" });
+  bwipjs.toCanvas(c, Object.assign({ scale: 3, backgroundcolor: "F1F1EE" }, opts));
+  Object.assign(c.style, { left: x * S + "px", top: y * S + "px", width: w * S + "px", height: h * S + "px", imageRendering: "pixelated" });
   parent.appendChild(c);
 }
 const group = (s, n) => s.match(new RegExp(`.{1,${n}}`, "g")).join(" ");
 
+const rnd = (n, set = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz0123456789") => Array.from({ length: n }, () => set[Math.floor(Math.random() * set.length)]).join("");
+
 function drawLabel(l) {
   const root = $("label");
   root.innerHTML = "";
-  // Postage area: the empty box with a cross, as printed on bulk labels.
+  // Postage area: the empty box with a cross, and a small indicia box with generic text.
   const box = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  box.setAttribute("width", 150); box.setAttribute("height", 92);
-  Object.assign(box.style, { position: "absolute", left: "24px", top: "18px" });
-  box.innerHTML = '<g stroke="#17171a" stroke-width="1.5" fill="none"><path d="M2 2 L148 90 M2 90 L148 2"/><path d="M148 2 V92"/></g>';
+  box.setAttribute("width", 120 * S); box.setAttribute("height", 62 * S);
+  Object.assign(box.style, { position: "absolute", left: "0px", top: 50 * S + "px" });
+  box.innerHTML = `<g stroke="#17171a" stroke-width="${1.2 * S}" fill="none"><path d="M${S} ${S} L${116 * S} ${60 * S} M${S} ${60 * S} L${116 * S} ${S}"/><path d="M${116 * S} ${S} V${62 * S}"/></g>`;
   root.appendChild(box);
-  txt(root, "CARRIER – LEAVE IF NO RESPONSE", 190, 62, 15);
-  rule(root, 22, 118, 436, 2);
-  txt(root, "PARCEL SELECT", 0, 124, 40, { center: true });
-  rule(root, 22, 172, 436, 2);
+  txt(root, "CARRIER \u2013 LEAVE IF NO RESPONSE", 121, 80, 14);
+  const ind = rule(root, 336, 52, 116, 56, 0); ind.style.background = "transparent"; ind.style.border = `${1 * S}px solid #17171a`;
+  ["PARCEL SELECT", "POSTAGE PAID", "SAMPLE", "TEST"].forEach((t, i) => txt(root, t, 0, 56 + i * 11.5, 9.5, { center: true, cx: 394, weight: 600 }));
+  rule(root, 0, 112, 480, 1.5);
+  txt(root, "PARCEL SELECT", 0, 117, 29, { center: true, cx: 222 });
+  rule(root, 0, 137, 480, 1);
 
-  // Return block (smaller print), route code box.
-  txt(root, l.returnCode, 26, 180, 12);
-  l.returnLines.forEach((t, i) => txt(root, t, 26, 194 + i * 17, 15));
-  const rb = rule(root, 330, 190, 112, 50, 0); rb.style.background = "transparent"; rb.style.border = "2px solid #17171a";
-  txt(root, l.routeCode, 346, 198, 28);
-  txt(root, "ADDRESS SERVICE REQUESTED", 24, 262, 15);
+  // Return block (small print) and the route code box.
+  l.returnLines.forEach((t, i) => txt(root, t, 9, 143 + i * 11.8, 12.5));
+  const rb = rule(root, 241, 150, 44, 27, 0); rb.style.background = "transparent"; rb.style.border = `${1.4 * S}px solid #17171a`;
+  txt(root, l.routeCode, 0, 154, 16.5, { center: true, cx: 263 });
+  txt(root, "ADDRESS SERVICE REQUESTED", 6, 208, 11);
 
-  // 2D code (Data Matrix) and the recipient.
-  const dm = `~1${l.zip5}${l.zip4}${l.tracking}${l.serial}${l.name.replace(/ /g, "")}`;
-  bar(root, { bcid: "datamatrix", text: dm, scale: 4 }, 26, 298, 92, 92);
-  txt(root, l.name, 134, 292, 25);
-  txt(root, l.street, 134, 321, 25);
-  let y = 350;
-  if (l.unit) { txt(root, l.unit, 134, y, 25); y += 29; }
-  txt(root, `${l.city} ${l.state} ${l.zip5}–${l.zip4}`, 134, y, 25);
+  // Small Data Matrix and the recipient (the text the scanner has to read).
+  const dm = `~1${l.zip5}${l.zip4}${l.tracking}${l.serial}`;
+  bar(root, { bcid: "datamatrix", text: dm, scale: 4 }, 14, 236, 46, 46);
+  txt(root, l.name, 76, 226, 16.5);
+  txt(root, l.street, 76, 240.5, 16.5);
+  let y = 255;
+  if (l.unit) { txt(root, l.unit, 76, y, 16.5); y += 14.5; }
+  txt(root, `${l.city} ${l.state} ${l.zip5}\u2013${l.zip4}`, 76, y, 16.5);
+  bar(root, { bcid: "datamatrix", text: `${l.serial}${l.zip5}${l.zip4}${rnd(12, "0123456789")}`, scale: 4 }, 385, 304, 47, 47);
 
-  rule(root, 22, 412, 436, 2);
-  txt(root, "TRACKING # eVS", 0, 420, 22, { center: true });
-  bar(root, { bcid: "code128", text: `^FNC1420${l.zip5}${l.tracking}`, parsefnc: true, scale: 2, height: 22, includetext: false }, 24, 452, 432, 112);
-  txt(root, group(l.tracking, 4), 0, 572, 26, { center: true, spacing: "1px" });
-  rule(root, 22, 612, 436, 2);
+  rule(root, 0, 353, 480, 1.5);
+  txt(root, "TRACKING # eVS", 81, 358, 15);
+  bar(root, { bcid: "code128", text: `^FNC1420${l.zip5}${l.tracking}`, parsefnc: true, scale: 2, height: 22, includetext: false }, 14, 383, 352, 74);
+  txt(root, group(l.tracking, 4), 110, 466, 18);
+  rule(root, 0, 493, 480, 1.5);
 
-  // Sort codes, big, then the sequence marks.
-  l.sortCodes.forEach((c, i) => txt(root, c, 26 + i * 108, 620, 36));
-  txt(root, l.seq, 26, 668, 24);
-  txt(root, l.weight, 130, 672, 18);
-  txt(root, "TEST LABEL – NOT FOR SHIPPING", 0, 702, 10, { center: true, weight: 600 });
+  // Four Data Matrix codes with the sequence marks down both sides.
+  for (let i = 0; i < 4; i++) bar(root, { bcid: "datamatrix", text: rnd(46), scale: 4 }, 28 + i * 104.5, 537, 85, 83);
+  const side = `${rnd(9)}   ${l.seq.replace(/\D/g, "")[0] || 3} / ${rnd(4, "0123456789")}`;
+  txt(root, side, 9, 610, 9.5, { rot: -90 });
+  txt(root, side, 449, 547, 9.5, { rot: 90 });
+
+  // Sort-code boxes.
+  rule(root, 0, 636, 100, 0.8, 0); rule(root, 100, 636, 0.8, 84); rule(root, 224, 636, 0.8, 84);
+  const a1 = l.sortCodes[0], b1 = l.sortCodes[2];
+  txt(root, a1, 0, 636, 27, { center: true, cx: 52 });
+  txt(root, a1[0], 8, 664, 21, { inverse: true });
+  txt(root, a1.slice(1), 29, 664, 21);
+  txt(root, b1, 0, 636, 27, { center: true, cx: 163 });
+  txt(root, "D", 112, 662, 21, { inverse: true }); txt(root, "001", 134, 662, 21);
+  txt(root, "\u2192", 106, 683, 18); txt(root, "B", 128, 683, 21, { inverse: true }); txt(root, "001", 152, 683, 21);
+  txt(root, "TEST LABEL \u2013 NOT FOR SHIPPING", 0, 702, 8.5, { center: true, weight: 600, cx: 350 });
 }
 
 // ---- Damage: warp, shading, dirt ------------------------------------------------------------------------------
