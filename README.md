@@ -4,6 +4,10 @@ A Circuit-style delivery route optimizer, targeting **Android**. Design brief: [
 
 See [docs/architecture.md](docs/architecture.md) for the architecture review, measurements and known debts.
 
+## License
+
+[MIT](LICENSE). Third-party parts keep their own terms: the bundled font Atkinson Hyperlegible Next is under the SIL Open Font License (`docs/OFL-atkinson-hyperlegible.txt`); map data is © OpenStreetMap contributors (ODbL); the offline address data comes from the US National Address Database (a US federal work, public domain).
+
 ## Layout
 
 | Path | What |
