@@ -18,6 +18,7 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.TextView
 import app.routeplanner.NetStatus
+import app.routeplanner.appFont
 import app.routeplanner.color
 import app.routeplanner.core.LatLng
 import app.routeplanner.core.RouteSession
@@ -405,7 +406,8 @@ class RouteMap(
     /** Small rounded tag with [text] on the surface color; drawn next to a pin. */
     private fun labelImage(text: String, emphasised: Boolean): Bitmap {
         val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            textSize = ctx.dpf(11f); isFakeBoldText = emphasised
+            textSize = ctx.dpf(11f)
+            ctx.appFont(emphasised)?.let { typeface = it } ?: run { isFakeBoldText = emphasised }
             color = ctx.color(if (emphasised) M.attr.colorOnPrimaryContainer else M.attr.colorOnSurface)
         }
         val padX = ctx.dpf(6f); val padY = ctx.dpf(3f)
@@ -433,7 +435,7 @@ class RouteMap(
         c.drawCircle(cx, cx, d / 2 - stroke, p)
         p.color = ink
         p.textAlign = Paint.Align.CENTER
-        p.isFakeBoldText = true
+        ctx.appFont(true)?.let { p.typeface = it } ?: run { p.isFakeBoldText = true }
         p.textSize = ctx.dpf(if (text.length > 2) 10f else if (big) 15f else 12f)
         c.drawText(text, cx, cx - (p.descent() + p.ascent()) / 2, p)
         return bmp
@@ -466,7 +468,7 @@ class RouteMap(
         c.drawRoundRect(RectF(st, st, bmp.width - st, bmp.height - st), r, r, p)
         p.color = ctx.color(M.attr.colorOnSecondary)
         p.textAlign = Paint.Align.CENTER
-        p.isFakeBoldText = true
+        ctx.appFont(true)?.let { p.typeface = it } ?: run { p.isFakeBoldText = true }
         p.textSize = ctx.dpf(14f)
         c.drawText(letter, bmp.width / 2f, bmp.height / 2f - (p.descent() + p.ascent()) / 2, p)
         return bmp

@@ -260,12 +260,12 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
         top.addView(ctx.iconButton(R.drawable.ic_chevron_left, "Previous stop") { host.prev() }, chevron)
         val pendingAfter = s.stops.count { it.status == Status.PENDING }
         val info = ctx.vertical().apply { setPadding(ctx.dp(4), 0, ctx.dp(4), 0) }
-        info.addFull(ctx.label(14f, onCard, bold = true).apply {
+        info.addFull(ctx.label(13f, onCard, bold = true).apply {
             text = "Stop ${c.optimizedIndex} of ${s.stops.size}" +
                 (if (c.status == Status.PENDING) " · ETA ${ctx.clock(s, sum.projectedEta(c))}" else " · ${c.status.name.lowercase()}") +
                 " · ID ${c.entryNo} · ${totalPackages(s.finder(c).size)}"
         })
-        info.addFull(ctx.label(13f, onCard).apply { text = "$pendingAfter left · ${summaryLine(s, sum, remainingOnly = true)}" })
+        info.addFull(ctx.label(12f, onCard).apply { text = "$pendingAfter left · ${summaryLine(s, sum, remainingOnly = true)}" })
         top.addWeighted(info)
         top.addView(ctx.iconButton(R.drawable.ic_chevron_right, "Next stop") { host.next() }, LinearLayout.LayoutParams(ctx.dp(48), ctx.dp(48)))
         body.addFull(top)
