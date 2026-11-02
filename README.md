@@ -105,8 +105,9 @@ Without network the route list, stop editing, delivery/proof, the floating butto
 
 ## Not yet verified on a device
 
+**1.0.4**: after adding stops the route is re-timed (and the roads redrawn) only after 25 quiet seconds; the Update / Optimize buttons on the "Added stop" banner are readable.
 **1.0.3**: starting a route that hasn't been optimized asks whether to optimize first.
-**1.0.2**: the changed-route banner says what was added (address, ID, packages, last four of the barcode); no route line or highlighted roads until the route is optimized; after adding stops the app waits 10 seconds before re-timing the route and redrawing the roads (Optimize and Update times run at once), which keeps the phone cooler.
+**1.0.2**: the changed-route banner says what was added (address, ID, packages, last four of the barcode); no route line or highlighted roads until the route is optimized; after adding stops the app waits 25 seconds before re-timing the route and redrawing the roads (Optimize and Update times run at once), which keeps the phone cooler.
 **1.0.1**: label scanning: the scanner finds the bright label and ignores text outside it, orders lines by position, and copes with OCR splitting or mangling the city line and ZIP+4; "ADDRESS SERVICE REQUESTED" marks the recipient. Settings shows the app version. Developer tools in `tools/label-lab/` (a localhost page of sample labels built from the Cumberland County pack, and scripts that run them through a debug build over adb, by image or by camera).
 
 **1.0.0**: first public release, signed with a dedicated release key (a different key from every earlier build: an installed 0.9.x copy must be uninstalled first, which deletes its saved routes and downloaded data; share a route first to keep a copy). Everything from 0.9.3, plus the GitHub release workflow above.

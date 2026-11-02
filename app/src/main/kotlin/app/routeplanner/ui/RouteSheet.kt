@@ -1,6 +1,8 @@
 package app.routeplanner.ui
 
 import android.content.Context
+import android.content.res.ColorStateList
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
@@ -237,8 +239,19 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
             listOfNotNull("Added stop", splitAddress(added.address).first, "ID ${added.entryNo}", totalPackages(s.finder(added).size), four).joinToString(" · ")
         }
         box.addWeighted(ctx.label(13f, M.attr.colorOnTertiaryContainer, bold = added != null, lines = 2).apply { this.text = text })
-        box.addView(ctx.button("Update", M.attr.borderlessButtonStyle) { host.update() })
-        box.addView(ctx.button("Optimize", M.attr.borderlessButtonStyle) { host.optimize() })
+        // Borderless text buttons default to colorPrimary, which washes out on the tertiary container;
+        // tint them with its "on" color and keep them narrow so the text keeps its two lines.
+        // Not compact(): its auto-sizing text clips a wrap-content button.
+        val on = ctx.color(M.attr.colorOnTertiaryContainer)
+        fun action(text: String, onClick: () -> Unit) = ctx.button(text, M.attr.borderlessButtonStyle, onClick = onClick).apply {
+            setTextColor(on)
+            rippleColor = ColorStateList.valueOf(on).withAlpha(40)
+            typeface = ctx.appFont(true) ?: Typeface.DEFAULT_BOLD
+            minWidth = 0; minimumWidth = 0
+            setPadding(ctx.dp(8), paddingTop, ctx.dp(8), paddingBottom)
+        }
+        box.addView(action("Update") { host.update() })
+        box.addView(action("Optimize") { host.optimize() })
         header.addFull(box, topDp = 8, bottomDp = 4)
     }
 

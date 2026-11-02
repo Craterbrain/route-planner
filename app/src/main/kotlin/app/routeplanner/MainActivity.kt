@@ -478,7 +478,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
                 else AppLog.i("roads: ${res.roadLegs} of ${res.legs} legs followed roads")
                 m.setRoadPath(res?.takeIf { it.roadLegs > 0 }?.path)
             }
-        }, 10_000)
+        }, 25_000)
     }
 
     private fun render() {
