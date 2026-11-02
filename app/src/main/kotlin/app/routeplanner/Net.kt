@@ -5,7 +5,6 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import app.routeplanner.core.PhotonGeocoder
 import java.net.HttpURLConnection
 import java.net.URL

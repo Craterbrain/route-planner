@@ -1,7 +1,6 @@
 package app.routeplanner
 
 import android.app.Activity
-import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import app.routeplanner.ui.*

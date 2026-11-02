@@ -6,9 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
-import android.view.MotionEvent
 import android.view.ViewGroup
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
@@ -80,14 +78,13 @@ class StopAdapter(private val ctx: Context, private val host: RouteHost) : Recyc
         val idBadge: TextView,
         val pkgBadge: TextView,
         val time: TextView,
-        val handle: ImageView,
     ) : RecyclerView.ViewHolder(root)
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
         val c = ctx
         val root = c.horizontal().apply {
-            // Full width: without this RecyclerView sizes the row to its content and the drag handle lands mid-row.
+            // Full width: without this RecyclerView sizes the row to its content.
             layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             setPadding(c.dp(12), c.dp(10), c.dp(4), c.dp(10))
             minimumHeight = c.dp(64)
@@ -118,19 +115,7 @@ class StopAdapter(private val ctx: Context, private val host: RouteHost) : Recyc
         root.addWeighted(texts)
         val time = c.label(13f, M.attr.colorOnSurfaceVariant).apply { gravity = Gravity.END }
         root.addView(time, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = c.dp(8) })
-        val handle = ImageView(c).apply {
-            setImageResource(R.drawable.ic_drag_handle)
-            contentDescription = "Drag to reorder"
-            setColorFilter(c.color(M.attr.colorOnSurfaceVariant))
-            setPadding(c.dp(10), c.dp(10), c.dp(10), c.dp(10))
-        }
-        root.addView(handle, LinearLayout.LayoutParams(c.dp(44), c.dp(44)))
-        val h = Holder(root, badge, line1, line2, meta, idBadge, pkgBadge, time, handle)
-        handle.setOnTouchListener { _, e ->
-            if (e.actionMasked == MotionEvent.ACTION_DOWN) touchHelper.startDrag(h)
-            false
-        }
-        return h
+        return Holder(root, badge, line1, line2, meta, idBadge, pkgBadge, time)
     }
 
     override fun onBindViewHolder(h: Holder, position: Int) {
@@ -153,7 +138,6 @@ class StopAdapter(private val ctx: Context, private val host: RouteHost) : Recyc
         val finished = s.status != Status.PENDING
         h.root.alpha = if (finished) 0.6f else 1f
         h.root.background = if (r.current) ctx.roundRect(M.attr.colorSecondaryContainer, 16) else null
-        h.handle.visibility = android.view.View.GONE // reorder by long-press instead
         h.root.contentDescription = "Stop ${s.optimizedIndex}, ID ${s.entryNo}, ${s.address}, ${s.status.name.lowercase()}"
         h.root.setOnClickListener { host.openStop(s.id) }
     }

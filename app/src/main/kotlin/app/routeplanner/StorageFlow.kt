@@ -4,7 +4,6 @@ import android.app.Activity
 import app.routeplanner.core.Pruning
 import app.routeplanner.ui.Dialogs
 import app.routeplanner.ui.addFull
-import app.routeplanner.ui.dp
 import app.routeplanner.ui.label
 import app.routeplanner.ui.vertical
 import com.google.android.material.R as M

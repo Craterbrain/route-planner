@@ -15,8 +15,8 @@ android {
         targetSdk = 35
         // `-Pabis=arm64-v8a` builds for 64-bit phones only (about 30 MB smaller); the default keeps 32-bit ARM too.
         ndk { abiFilters += (project.findProperty("abis") as String? ?: "arm64-v8a,armeabi-v7a").split(",") }
-        versionCode = 26
-        versionName = "0.9.2"
+        versionCode = 27
+        versionName = "0.9.3"
     }
 
     // One signing identity for every build, kept outside the repo: ~/.config/route-planner/signing/signing.properties

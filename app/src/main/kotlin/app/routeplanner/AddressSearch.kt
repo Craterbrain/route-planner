@@ -2,7 +2,6 @@ package app.routeplanner
 
 import android.content.Context
 import android.location.Geocoder as AndroidGeocoder
-import android.util.Log
 import app.routeplanner.core.*
 import app.routeplanner.core.address.OfflineAddressProvider
 import app.routeplanner.core.google.GoogleSuggest

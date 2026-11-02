@@ -1,7 +1,6 @@
 package app.routeplanner
 
 import android.content.Context
-import android.util.Log
 import app.routeplanner.core.HttpGet
 import app.routeplanner.core.HttpStatusException
 import app.routeplanner.core.TimedGet

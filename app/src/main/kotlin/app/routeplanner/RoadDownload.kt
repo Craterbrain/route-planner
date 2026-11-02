@@ -78,8 +78,9 @@ object RoadDownload {
 
     /** Downloads [f] from [url], resuming a partial file, and checks its size and SHA-256. [onBytes] gets the bytes of this file so far. */
     private fun fetchFile(f: File, url: String, bytes: Long, sha: String, cancelled: () -> Boolean, onBytes: (Long) -> Unit) {
-        if (f.length() > bytes) f.delete()
         if (f.length() == bytes && sha256(f) == sha) { onBytes(bytes); return }
+        // Longer than expected, or complete but failing its checksum: resuming would ask for bytes past the end (HTTP 416), so start over.
+        if (f.length() >= bytes) f.delete()
         val have = f.length()
         val c = open(url, have)
         try {
@@ -111,6 +112,13 @@ object RoadDownload {
      * everything; [cancelled] is polled and a [Cancelled] is thrown, keeping the partial files so a retry resumes.
      */
     fun install(ctx: Context, pack: Pack, addr: AddrPack?, cancelled: () -> Boolean, progress: (Long, Long) -> Unit, phase: (String) -> Unit) {
+        check(busy.compareAndSet(false, true)) { "A download is already running." }
+        try { installLocked(ctx, pack, addr, cancelled, progress, phase) } finally { busy.set(false) }
+    }
+
+    private val busy = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    private fun installLocked(ctx: Context, pack: Pack, addr: AddrPack?, cancelled: () -> Boolean, progress: (Long, Long) -> Unit, phase: (String) -> Unit) {
         val d = dir(ctx).apply { mkdirs() }
         // Room for the downloads plus the unpacked files (the downloads are removed once verified).
         val need = pack.downloadBytes + pack.tarBytes + (addr?.let { it.gzBytes + it.sqliteBytes } ?: 0L)

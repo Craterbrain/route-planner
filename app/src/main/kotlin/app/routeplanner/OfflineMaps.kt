@@ -1,7 +1,6 @@
 package app.routeplanner
 
 import android.content.Context
-import android.util.Log
 import app.routeplanner.core.Bounds
 import app.routeplanner.core.TileMath
 import org.json.JSONObject
@@ -51,7 +50,7 @@ object OfflineMaps {
                     onResult(groups)
                 }
                 for (r in regions) r.getStatus(object : OfflineRegion.OfflineRegionStatusCallback {
-                    override fun onStatus(s: OfflineRegionStatus?) { status[r.id] = s; if (status.size == regions.size) finish() }
+                    override fun onStatus(status0: OfflineRegionStatus?) { status[r.id] = status0; if (status.size == regions.size) finish() }
                     override fun onError(error: String?) { status[r.id] = null; if (status.size == regions.size) finish() }
                 })
             }

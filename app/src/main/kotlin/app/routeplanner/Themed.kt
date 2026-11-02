@@ -13,9 +13,17 @@ fun Context.themed(): Context =
  * The bundled app font (Atkinson Hyperlegible Next), from the single-file resources so bold is the real bold face rather than a
  * synthesized style on the family. Set on views explicitly where the theme's fontFamily doesn't reach (the overlay service).
  */
-fun Context.appFont(bold: Boolean = false): android.graphics.Typeface? =
-    runCatching { androidx.core.content.res.ResourcesCompat.getFont(this, if (bold) R.font.atkinson_bold else R.font.atkinson_regular) }
+fun Context.appFont(bold: Boolean = false): android.graphics.Typeface? {
+    val id = if (bold) R.font.atkinson_bold else R.font.atkinson_regular
+    // Loaded once: labels and map bitmaps ask for it hundreds of times while a long route is drawn.
+    synchronized(fontCache) { fontCache[id]?.let { return it } }
+    val face = runCatching { androidx.core.content.res.ResourcesCompat.getFont(this, id) }
         .onFailure { AppLog.w("app font failed to load", it) }.getOrNull()
+    if (face != null) synchronized(fontCache) { fontCache[id] = face }
+    return face
+}
+
+private val fontCache = HashMap<Int, android.graphics.Typeface>()
 
 /** Resolves a theme color attribute such as [com.google.android.material.R.attr.colorPrimary]. */
 fun Context.color(attr: Int): Int = MaterialColors.getColor(this, attr, 0)

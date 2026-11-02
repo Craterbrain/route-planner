@@ -3,7 +3,6 @@ package app.routeplanner
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
-import android.util.Log
 import app.routeplanner.core.address.AddrPoint
 import app.routeplanner.core.address.AddressStore
 import app.routeplanner.core.address.OfflineAddressSearch
