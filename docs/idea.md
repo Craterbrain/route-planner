@@ -1,4 +1,4 @@
-Building a delivery route optimization platform like Circuit requires connecting several specialized subsystems—from geocoding to graph algorithms and mobile navigation hands-off. Here is a complete technical breakdown covering your 6 points, plus the core features Circuit relies on that complete the app experience.
+Building a courier route optimization platform requires connecting several specialized subsystems—from geocoding to graph algorithms and mobile navigation hands-off. Here is a complete technical breakdown covering your 6 points, plus the core features that complete the app experience.
 
 1. Accurate Geocoding & Address Placement
 
@@ -44,7 +44,7 @@ Stop duration (e.g., 2 minutes spent per drop-off to calculate accurate overall 
 
 4. Package Management & Manifest Ordering
 
-Circuit’s main selling point for multi-drop couriers is reducing time spent looking for packages inside the delivery vehicle.
+The main selling point for multi-drop couriers is reducing time spent looking for packages inside the delivery vehicle.
 
 Data Schema for Packages:
 
@@ -94,9 +94,9 @@ Tap "Prev Stop": Reverts the previous stop to pending and refocuses map camera.
 
 Overlay/Floating Widget: On Android, build a system draw-over overlay (System Alert Window) so the controls float directly on top of Google Maps / Waze without forcing the driver to toggle back into your main app.
 
-Crucial Circuit Features You Missed
+Crucial Features You Missed
 
-To build an app that directly competes with Circuit, you will also need these features:
+To build a competitive courier app you will also need these features:
 
 Package Finder / Truck Zone Tagging: When loading their vehicle, drivers tag where a package is placed (e.g., "Package #42 -> Shelf A"). When arriving at a stop, the top card displays: "Stop #5: Scan #42 - Location: Shelf A". This drastically speeds up drop-offs.
 

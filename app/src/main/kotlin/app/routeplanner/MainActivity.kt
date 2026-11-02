@@ -40,7 +40,7 @@ import com.google.android.material.snackbar.Snackbar
 import java.io.File
 
 /**
- * The route screen, laid out like Circuit: a full-screen map with numbered
+ * The route screen: a full-screen map with numbered
  * stop pins, a floating "add stop" search bar (typed, voice, overflow menu),
  * and a draggable bottom sheet with the route summary, the next-stop card and
  * the stop list. Stop details open in their own sheet.

@@ -4,11 +4,11 @@ enum class Status { PENDING, COMPLETED, FAILED, SKIPPED }
 
 /**
  * Why a stop failed. The first three are kept for routes saved by older
- * versions; the rest follow Circuit's failure list.
+ * versions.
  */
 enum class FailReason { RECIPIENT_MISSING, ACCESS_CODE_NEEDED, WRONG_ADDRESS, NO_PARKING, NO_TIME, OTHER }
 
-/** Circuit's per-stop "Order" setting: visit first, let the optimizer decide, or visit last. */
+/** A stop's "Order" setting: visit first, let the optimizer decide, or visit last. */
 enum class Placement { FIRST, AUTO, LAST }
 
 /**

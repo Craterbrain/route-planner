@@ -20,7 +20,7 @@ import com.google.android.material.bottomsheet.BottomSheetDragHandleView
 import com.google.android.material.card.MaterialCardView
 
 /**
- * The stop-list bottom sheet under the map, Circuit-style:
+ * The stop-list bottom sheet under the map:
  * - empty: how to add stops;
  * - planning: route summary + Optimize / Start route;
  * - driving: a next-stop card with Navigate, Failed, Delivered and prev/next;
@@ -225,7 +225,7 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
         header.addFull(row, topDp = 10, bottomDp = 8)
     }
 
-    /** Circuit-style "preview changes": keep the order with fresh times, or re-optimize. */
+    /** "Preview changes": keep the order with fresh times, or re-optimize. */
     private fun changedBanner() {
         val box = ctx.horizontal().apply {
             background = ctx.roundRect(M.attr.colorTertiaryContainer, 12)

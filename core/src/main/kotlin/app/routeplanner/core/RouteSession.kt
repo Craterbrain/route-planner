@@ -2,7 +2,7 @@ package app.routeplanner.core
 
 /**
  * Driver-side route state machine behind the route screen and action bar:
- * [Prev] (Delivered) [Next], plus Circuit-style edits (move, make next,
+ * [Prev] (Delivered) [Next], plus edits (move, make next,
  * reverse, remove, first/last). Pure state; persistence and UI live elsewhere.
  *
  * Stop times ([Stop.etaSec], [Stop.window]) are seconds on the route clock,
@@ -203,7 +203,7 @@ class RouteSession(
         return true
     }
 
-    /** Circuit's "make next": the pending stop [id] is visited right after the current one. */
+    /** "Make next": the pending stop [id] is visited right after the current one. */
     fun makeNext(id: String): Boolean {
         val s = stop(id) ?: return false
         if (s.status != Status.PENDING) return false
@@ -297,7 +297,7 @@ class RouteSession(
     /** The stop a package sits at. */
     fun stopOf(pkg: Pkg): Stop? = indexOf(pkg.stopId)?.let { stops[it] }
 
-    /** Appends a stop without re-planning (Circuit adds, then you optimize or update). */
+    /** Appends a stop without re-planning (add first, then optimize or update). */
     fun addStop(stop0: Stop, newPackages: List<Pkg> = emptyList(), codes: List<String> = emptyList()): Stop {
         val hadPending = stops.any { it.status == Status.PENDING }
         // The next address ID, unless the caller brought a free one (an import numbers rows in file order).

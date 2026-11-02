@@ -22,7 +22,7 @@ import com.google.android.material.R as M
  * The stop list. Rows mirror the session's stop order one to one (adapter
  * position == session index), so drag/drop maps straight to a move.
  *
- * Gestures (as in Circuit): swipe left = Delivered (or Undo on a finished
+ * Gestures: swipe left = Delivered (or Undo on a finished
  * stop), swipe right = Navigate, long-press to reorder, tap for details.
  */
 class StopAdapter(private val ctx: Context, private val host: RouteHost) : RecyclerView.Adapter<StopAdapter.Holder>() {

@@ -34,7 +34,7 @@ import java.time.LocalTime
 import java.time.ZoneId
 
 /**
- * Circuit's stop details sheet: address and status, the primary actions
+ * The stop details sheet: address and status, the primary actions
  * (Navigate / Failed / Delivered, or Undo), then the stop's settings: order
  * (First / Auto / Last), arrival time, time at stop, notes, package finder,
  * drop-off pin, and move / make next / remove.
@@ -257,7 +257,7 @@ class StopDetailSheet(private val act: Activity, private val host: RouteHost, pr
     private fun wallClock(s: RouteSession, sec: Long): LocalTime =
         Instant.ofEpochMilli(s.startMs + sec * 1000).atZone(ZoneId.systemDefault()).toLocalTime()
 
-    /** Circuit-style arrival time: earliest ("after"), latest ("before"), or anytime. */
+    /** Arrival time: earliest ("after"), latest ("before"), or anytime. */
     private fun pickWindow(s: RouteSession, st: Stop) {
         val w = st.window
         val after = w?.first?.takeIf { it > WINDOW_OPEN_START }

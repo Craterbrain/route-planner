@@ -32,7 +32,7 @@ object Dialogs {
             .setNegativeButton("Cancel", null).show()
     }
 
-    /** Circuit's failure reasons. */
+    /** Why a stop failed. */
     fun failReason(ctx: Context, onPick: (FailReason) -> Unit) {
         val reasons = FAIL_LABELS.keys.toList()
         MaterialAlertDialogBuilder(ctx)
@@ -67,7 +67,7 @@ object Dialogs {
         if (checkedButtonId == android.view.View.NO_ID) null else findViewById<MaterialButton>(checkedButtonId)?.tag as? String
 
     /**
-     * Package finder location, as in Circuit: Front/Middle/Back, Left/Right,
+     * Package finder location: Front/Middle/Back, Left/Right,
      * Floor/Shelf, plus free text (bin numbers etc.). Returns e.g. "Back · Left · Shelf · Bin 3".
      */
     fun zone(ctx: Context, pkgId: String, current: String?, onSet: (String?) -> Unit) {

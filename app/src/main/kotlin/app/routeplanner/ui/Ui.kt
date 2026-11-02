@@ -156,7 +156,7 @@ fun Context.windowLabel(s: RouteSession, w: LongRange): String {
     }
 }
 
-/** Sentinels for a one-sided window ("10am and Anytime" in Circuit's terms). */
+/** Sentinels for a one-sided window ("10am and Anytime"). */
 const val WINDOW_OPEN_START = -10_000_000L
 const val WINDOW_OPEN_END = 10_000_000L
 

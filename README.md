@@ -2,7 +2,7 @@
 
 # route-planner
 
-A Circuit-style delivery route optimizer, targeting **Android**. Design brief: [docs/idea.md](docs/idea.md). UI/UX research on Circuit (now Spoke Route Planner) and the feature checklist: [docs/circuit-research.md](docs/circuit-research.md).
+A Circuit-style delivery route optimizer for **Android**. Design brief: [docs/idea.md](docs/idea.md).
 
 See [docs/architecture.md](docs/architecture.md) for the architecture review, measurements and known debts.
 
@@ -47,7 +47,7 @@ J=-Dorg.gradle.java.home=$HOME/.gradle/jdks/eclipse_adoptium-17-amd64-linux.2
 Manifest CSV columns: `address,lat,lng,package,zone,priority,window_start,window_end,service_min,notes` (a shared route adds `access_lat,access_lng,id,codes,approximate`)
 (example: `prototype/examples/manifest.csv`). `priority`: `yes`/`first` = visit first, `last` = visit last, blank = optimizer decides.
 
-## The app (Circuit-style flow)
+## The app
 
 - **Starting point first:** until the route has a start, the sheet shows a "Set your starting point" card: **Use my current location** (fresh fix from the platform `LocationManager`: GPS/network/fused, no Play services; accuracy and age shown, Refresh button), **Search an address** (the search bar switches to "Search your starting address"), or **Pick on the map** (tap, or long-press → "Set as starting point"). Import, Optimize and Start route redirect to the card until then. The start is a distinct "S" pin on the map and the first row above the stop list (tap to change it, or to choose **Route ends: at last stop / back at start**). It is saved as the default for new routes and inside the saved route.
 - **Depot:** optimizing, ETAs and the road-time matrix start from the route start (matrix index 0). Once you've finished a stop, re-planning starts from your current position (else the last finished stop). Round trips add the drive back to the finish time and distance.
@@ -191,7 +191,6 @@ Check first:
 
 ## Roadmap
 
-A frame-by-frame comparison with the real Circuit/Spoke app (from tutorial videos and its App Store screenshots) is in [docs/circuit-walkthrough-and-gaps.md](docs/circuit-walkthrough-and-gaps.md); its "suggested order" is the working list.
 
 1. Run on a device; fix what breaks (nothing since 0.3.0 has run on hardware).
 2. Build a tile extract for a home region and verify on-device matrix end to end (done for Tennessee; the phone hasn't loaded it).
@@ -200,7 +199,7 @@ A frame-by-frame comparison with the real Circuit/Spoke app (from tutorial video
 5. Room if history/queries outgrow SharedPreferences.
 6. Server + sync only if a multi-device need appears.
 
-Done since the first roadmap: Circuit-style UI, start/end location, Google/offline/local address suggestions, offline address packs, offline map regions, label and barcode scanning, signature capture, delivery report export.
+Done since the first roadmap: the courier-style UI, start/end location, Google/offline/local address suggestions, offline address packs, offline map regions, label and barcode scanning, signature capture, delivery report export.
 
 ## Library choices
 
@@ -208,7 +207,7 @@ Principle: add a dependency only where it replaces a large amount of work; use s
 
 | Roadmap item | Choice | Notes |
 |---|---|---|
-| Map + offline tiles | **MapLibre Native Android**, `org.maplibre.gl:android-sdk-opengl` 13.7.1 (BSD-2, Maven Central, released 2026-10-15) | The map with numbered pins is central to Circuit's design. We use the OpenGL ES artifact because the default `android-sdk` 13.x declares Vulkan 1.0 as a *required* feature. Brings OkHttp, Timber, coroutines and `fragment` transitively, plus `libmaplibre.so` (APK ~41 MB debug for 2 ABIs). Tiles: **OpenFreeMap** (no key, commercial use OK, attribution required; offline downloads ≤3,000 tiles/50 MB each). `OfflineManager` for regions is not used yet. |
+| Map + offline tiles | **MapLibre Native Android**, `org.maplibre.gl:android-sdk-opengl` 13.7.1 (BSD-2, Maven Central, released 2026-10-15) | The map with numbered pins is central to the app. We use the OpenGL ES artifact because the default `android-sdk` 13.x declares Vulkan 1.0 as a *required* feature. Brings OkHttp, Timber, coroutines and `fragment` transitively, plus `libmaplibre.so` (APK ~41 MB debug for 2 ABIs). Tiles: **OpenFreeMap** (no key, commercial use OK, attribution required; offline downloads ≤3,000 tiles/50 MB each). `OfflineManager` for regions is not used yet. |
 | Lists / bottom sheet | `androidx.recyclerview` 1.1.0, `androidx.coordinatorlayout` 1.1.0 | Already transitive deps of `material`; declared explicitly because the stop list (`ItemTouchHelper` swipe/drag) and `BottomSheetBehavior` use them directly. No new artifacts. |
 | Road-network matrix | **Valhalla, on-device** via `io.github.rallista:valhalla-mobile` 0.6.4 (MIT, released 2026-10-06, minSdk 24) | Exposes `sources_to_targets`; we call `matrixRaw` with the same JSON the server API takes, so one tested `ValhallaMatrix` parser serves both. Needs a `valhalla_tiles.tar` for the region (`tools/build-tiles.sh`). ~7 MB native lib per ABI (we ship arm64-v8a + armeabi-v7a). A Valhalla server URL is the fallback; then straight-line estimates. OSRM rejected (no time-dependent speeds). |
 | *(earlier note)* | | An earlier search suggested `valhalla-mobile` was stale (0.1.0, Jan 2025); reading its README/releases showed it is current. |
