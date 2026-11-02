@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Label lab</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="bar">
+  <button id="newAddr" title="Space">New address</button>
+  <button id="reroll" class="alt" title="R">Re-roll warp &amp; dirt</button>
+  <label>Warp <input id="warp" type="range" min="0" max="2" step="0.05" value="1"></label>
+  <label>Dirt <input id="dirtAmt" type="range" min="0" max="2" step="0.05" value="1"></label>
+  <label>Softness <input id="soft" type="range" min="0" max="2" step="0.05" value="0.6"></label>
+  <span id="meta"></span>
+</div>
+<div id="stage">
+  <div id="scene">
+    <div id="sheet">
+      <div id="paper">
+        <div id="label"></div>
+        <div id="shade"></div>
+        <canvas id="dirt" width="480" height="720"></canvas>
+      </div>
+    </div>
+    <div id="foot">Sample labels for testing the Route Planner scanner. Made-up names and tracking numbers, real Cumberland County street addresses, no carrier or retailer logos.</div>
+  </div>
+</div>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="warpFilter" x="-5%" y="-5%" width="110%" height="110%">
+    <feTurbulence id="warpNoise" type="fractalNoise" baseFrequency="0.006 0.009" numOctaves="2" seed="3" result="n"/>
+    <feDisplacementMap id="warpMap" in="SourceGraphic" in2="n" scale="8" xChannelSelector="R" yChannelSelector="G"/>
+  </filter>
+</svg>
+<script src="node_modules/bwip-js/dist/bwip-js-min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

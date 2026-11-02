@@ -31,6 +31,7 @@ See [docs/architecture.md](docs/architecture.md) for the architecture review, me
 |---|---|
 | `core/` | Pure-Kotlin/JVM engine (no Android deps): manifest import, solver (first/last, windows, route clock), route state machine and edits (move, make next, reverse, remove), route summary, suggestion chain (`Suggest.kt`: providers, ranking, merger, circuit breaker), Google suggest parser (`google/`), offline address pack normalizer + search (`address/`), Photon geocoder, nav deep links. JUnit tests. |
 | `app/` | Android app (Kotlin, platform Views + Material 3; deps: `core-ktx`, `material`, `valhalla-mobile`, `maplibre`). `MainActivity` (screen wiring), `RouteActions` (import / add / optimize off the UI thread), `AddressSearch` (provider chain), `AddressPack` (offline address data over read-only SQLite), `GoogleTransport` (Play services Cronet or plain HTTP), `NetStatus` (reachability), `SessionStore`, `Prefs`, `Routing`, `OverlayService` (floating button); `ui/`: `RouteMap` (MapLibre pins + diagnostics), `SearchPanel` (suggestions), `RouteSheet` + `StopAdapter` (bottom sheet, next-stop card, swipe/drag list), `StopDetailSheet`, `PermissionsSheet`, `Dialogs`, `Ui` helpers. |
+| `tools/label-lab/` | Test shipping labels for the scanner (localhost page: real Cumberland County addresses, barcodes, warp and smudges). |
 | `tools/` | `build-tiles.sh`: builds the on-device routing data from an OSM extract (Docker/Podman). |
 | `prototype/` | Original zero-dep Node version of the core, kept as a reference. |
 

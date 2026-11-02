@@ -1,0 +1,20 @@
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background: #8a6a45; font-family: system-ui, sans-serif;
+  background-image: radial-gradient(ellipse at 30% 20%, rgba(255,235,200,.25), transparent 60%), radial-gradient(ellipse at 80% 90%, rgba(60,35,10,.35), transparent 55%); }
+#bar { position: sticky; top: 0; z-index: 10; display: flex; gap: 12px; align-items: center; padding: 10px 16px; background: rgba(20,24,24,.92); color: #e6eeee; flex-wrap: wrap; }
+#bar button { font: 600 15px system-ui; padding: 9px 16px; border-radius: 999px; border: 0; background: #9fd8e3; color: #0f3a44; cursor: pointer; }
+#bar button.alt { background: #2b4349; color: #cfe8ee; }
+#bar label { font-size: 13px; display: flex; align-items: center; gap: 6px; }
+#bar input[type=range] { width: 110px; }
+#meta { margin-left: auto; font-size: 12px; opacity: .75; }
+#stage { display: flex; justify-content: center; padding: 28px 12px 60px; }
+#scene { perspective: 1400px; }
+#sheet { position: relative; width: 480px; height: 720px; transform-style: preserve-3d; transform-origin: 50% 50%; box-shadow: 0 18px 40px rgba(30,15,0,.55), 0 2px 5px rgba(0,0,0,.4); }
+#paper { position: absolute; inset: 0; background: #f4f3ef; overflow: hidden; }
+#label { position: absolute; inset: 0; color: #17171a; font-family: "Nimbus Sans Narrow", "Liberation Sans Narrow", "Arial Narrow", Arial, sans-serif; font-weight: 700; }
+#label .abs { position: absolute; white-space: nowrap; line-height: 1.05; }
+#label .rule { position: absolute; background: #17171a; }
+#label canvas { position: absolute; }
+#shade, #dirt { position: absolute; inset: 0; pointer-events: none; }
+#foot { font: 11px system-ui; color: #f2e8d8; text-align: center; margin-top: 18px; opacity: .8; }
