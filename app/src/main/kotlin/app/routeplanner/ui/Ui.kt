@@ -173,11 +173,11 @@ fun Context.lastFourBadge(text: String) = TextView(this).apply {
     setPadding(dp(9), dp(3), dp(9), dp(3))
 }
 
-/** A bold rounded tag (stop ID, package count): high-contrast container colours, 15 sp by default. */
-fun Context.chip(bgAttr: Int, fgAttr: Int, size: Float = 15f) = TextView(this).apply {
+/** A small bold rounded tag (stop ID, package count): high-contrast container colours, 13 sp. */
+fun Context.chip(bgAttr: Int, fgAttr: Int, size: Float = 13f) = TextView(this).apply {
     appFont(true)?.let { typeface = it }
     textSize = size
     setTextColor(color(fgAttr))
     background = roundRect(bgAttr, 12)
-    setPadding(dp(10), dp(3), dp(10), dp(3))
+    setPadding(dp(8), dp(2), dp(8), dp(2))
 }

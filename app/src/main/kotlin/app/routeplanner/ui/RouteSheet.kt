@@ -255,33 +255,30 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
         card.addView(body)
         val onCard = M.attr.colorOnPrimaryContainer
 
-        // [<]  (3)  [ID 7]  [2 pkgs]  [>]      the three things to look for, big
-        //      Stop 3 of 12 · ETA 10:42  /  9 left · 1 h 05 min · 14.2 mi · done by 3:10 PM
+        // [<]  (3) [ID 7] [2 pkgs]   ETA 10:42  [>]
+        //      9 left · 1 h 05 min · 14.2 mi · done by 3:10 PM
         val top = ctx.horizontal()
         top.addView(ctx.iconButton(R.drawable.ic_chevron_left, "Previous stop") { host.prev() }, LinearLayout.LayoutParams(ctx.dp(48), ctx.dp(48)))
         val pendingAfter = s.stops.count { it.status == Status.PENDING }
         val colors = ctx.badgeColors(c, true)
-        val idRow = ctx.horizontal().apply { gravity = Gravity.CENTER }
+        val idRow = ctx.horizontal().apply { gravity = Gravity.CENTER_VERTICAL }
         idRow.addView(TextView(ctx).apply {
             this@RouteSheet.ctx.appFont(true)?.let { typeface = it }
-            text = badgeText(c); textSize = 24f; gravity = Gravity.CENTER
+            text = badgeText(c); textSize = 14f; gravity = Gravity.CENTER
             setTextColor(colors.text)
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(colors.fill) }
-        }, LinearLayout.LayoutParams(ctx.dp(52), ctx.dp(52)).apply { marginEnd = ctx.dp(10) })
-        idRow.addView(ctx.chip(M.attr.colorTertiaryContainer, M.attr.colorOnTertiaryContainer, 20f).apply { text = "ID ${c.entryNo}" },
+        }, LinearLayout.LayoutParams(ctx.dp(28), ctx.dp(28)).apply { marginEnd = ctx.dp(6) })
+        idRow.addView(ctx.chip(M.attr.colorTertiaryContainer, M.attr.colorOnTertiaryContainer).apply { text = "ID ${c.entryNo}" },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = ctx.dp(6) })
+        idRow.addView(ctx.chip(M.attr.colorSurface, M.attr.colorOnSurface).apply { text = totalPackages(s.finder(c).size) },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = ctx.dp(8) })
-        idRow.addView(ctx.chip(M.attr.colorSurface, M.attr.colorOnSurface, 20f).apply { text = totalPackages(s.finder(c).size) })
+        idRow.addView(ctx.label(13f, onCard, bold = true).apply {
+            text = if (c.status == Status.PENDING) "ETA ${ctx.clock(s, sum.projectedEta(c))}" else c.status.name.lowercase()
+        })
         top.addWeighted(idRow)
         top.addView(ctx.iconButton(R.drawable.ic_chevron_right, "Next stop") { host.next() }, LinearLayout.LayoutParams(ctx.dp(48), ctx.dp(48)))
         body.addFull(top)
-        val info = ctx.vertical().apply { gravity = Gravity.CENTER_HORIZONTAL }
-        info.addFull(ctx.label(13f, onCard, bold = true).apply {
-            gravity = Gravity.CENTER
-            text = "Stop ${c.optimizedIndex} of ${s.stops.size}" +
-                (if (c.status == Status.PENDING) " · ETA ${ctx.clock(s, sum.projectedEta(c))}" else " · ${c.status.name.lowercase()}")
-        })
-        info.addFull(ctx.label(12f, onCard).apply { gravity = Gravity.CENTER; text = "$pendingAfter left · ${summaryLine(s, sum, remainingOnly = true)}" })
-        body.addFull(info, topDp = 2)
+        body.addFull(ctx.label(12f, onCard).apply { gravity = Gravity.CENTER; text = "Stop ${c.optimizedIndex} of ${s.stops.size} · $pendingAfter left · ${summaryLine(s, sum, remainingOnly = true)}" })
 
         val (l1, l2) = splitAddress(c.address)
         val addr = ctx.vertical().apply {

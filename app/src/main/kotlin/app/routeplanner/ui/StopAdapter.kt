@@ -99,18 +99,18 @@ class StopAdapter(private val ctx: Context, private val host: RouteHost) : Recyc
         }
         val badge = TextView(c).apply {
             gravity = Gravity.CENTER
-            textSize = 18f
+            textSize = 15f
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         }
-        root.addView(badge, LinearLayout.LayoutParams(c.dp(44), c.dp(44)).apply { marginEnd = c.dp(12) })
+        root.addView(badge, LinearLayout.LayoutParams(c.dp(36), c.dp(36)).apply { marginEnd = c.dp(12) })
         val texts = c.vertical()
         val line1 = c.label(16f, bold = true, lines = 1)
         val line2 = c.label(13f, M.attr.colorOnSurfaceVariant, lines = 1)
         val meta = c.label(12f, M.attr.colorOnSurfaceVariant, lines = 2)
         // The address ID as a badge (tertiary container on its on-color: strong contrast in light and dark), beside the details.
-        val idBadge = c.chip(M.attr.colorTertiaryContainer, M.attr.colorOnTertiaryContainer, 15f)
+        val idBadge = c.chip(M.attr.colorTertiaryContainer, M.attr.colorOnTertiaryContainer)
         // Package count as its own chip, in the same weight: ID and "how many to grab" are what a courier looks for first.
-        val pkgBadge = c.chip(M.attr.colorSecondaryContainer, M.attr.colorOnSecondaryContainer, 15f)
+        val pkgBadge = c.chip(M.attr.colorSurfaceContainerHighest, M.attr.colorOnSurface)
         val metaRow = c.horizontal(Gravity.CENTER_VERTICAL)
         metaRow.addView(idBadge, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = c.dp(8); topMargin = c.dp(4) })
         metaRow.addView(pkgBadge, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = c.dp(4) })
