@@ -122,7 +122,7 @@ class LabelParserTest {
 
     @Test fun zipPlusFourSurvivesOcrMangledDashes() {
         // The recipient's "38555 – 6923" is where OCR goes wrong; losing it left only the return address.
-        for (tail in listOf("38555 – 6923", "38555-6923", "38555 6923", "38555.6923", "38555_6923", "38555~6923", "38555—6923")) {
+        for (tail in listOf("38555 – 6923", "38555-6923", "38555 6923", "38555.6923", "38555_6923", "38555~6923", "38555—6923", "38555 - 69Z3", "38555 -6923 |", "38555 – 6923 ©", "38555 6923 4", "38555- 692")) {
             val r = LabelParser.parse(listOf(
                 "CARRIER - LEAVE IF NO RESPONSE" to 26f, "USPS PARCEL SELECT" to 48f,
                 "AMAZON.COM.INDC LLC" to 22f, "900 PATROL RD" to 22f, "JEFFERSONVILLE IN 47130" to 22f, "R012" to 34f,

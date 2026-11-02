@@ -43,11 +43,9 @@ object LabelParser {
         "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY", "PR",
     )
     // ZIP+4 may be written with a hyphen, en dash or em dash, with or without spaces around it.
-    // OCR often drops or mangles the dash (38555 6923, 38555.6923, 38555_6923, 38555~6923), so any run of spaces and
-    // punctuation (or none) between the ZIP and its four extra digits is accepted.
-    private const val DASH = "[\\s\\p{P}\\u2010-\\u2015\\u2212~_|]*"
-    private val CITY_LINE = Regex("""^(.*?[A-Za-z].*?)[,\s]+([A-Za-z]{2})\s+(\d{5})(?:$DASH\d{4})?\s*$""")
-    private val ZIP4_TAIL = Regex("""(\d{5})$DASH\d{4}\s*$""")
+    // Whatever follows the five-digit ZIP on that line (the "-6923" extension, or OCR's idea of it: a dropped, mangled or
+    // misread dash and digits, stray marks) is ignored, and removed from the address handed to the geocoder.
+    private val CITY_LINE = Regex("""^(.*?[A-Za-z].*?)[,\s]+([A-Za-z]{2})\s+(\d{5})(?!\d)[^\n]{0,16}$""")
     private val ENDORSEMENT = Regex("""SERVICE\s+REQUESTED|ADDRESS\s+CORRECTION|FORWARDING""", RegexOption.IGNORE_CASE)
     private val STREET_LINE = Regex("""^\d+[A-Za-z]?(?:\s+|-)\S.*[A-Za-z].*$""")
     private val UNIT_LINE = Regex("""^(?:APT|APARTMENT|UNIT|STE|SUITE|LOT|BLDG|#)\.?\s*\S+.*$""", RegexOption.IGNORE_CASE)
@@ -63,8 +61,7 @@ object LabelParser {
         val found = ArrayList<Candidate>()
         val seen = HashSet<String>()
         fun add(text: String, startLine: Int, used: List<OcrLine>) {
-            // "57107–6490" -> "57107": the extra four digits only confuse a geocoder.
-            val pretty = pretty(text.replace(ZIP4_TAIL, "$1"))
+            val pretty = pretty(text)
             if (!seen.add(pretty.lowercase())) return
             val known = used.map { it.height }.filter { it > 0f }
             found += Candidate(pretty, roleFromCues(lines, startLine), if (known.isEmpty()) 0f else known.average().toFloat(), nameAbove(lines, startLine))
@@ -74,7 +71,7 @@ object LabelParser {
             // Street and city on one line: "8681 Hwy 70 E, Crossville TN 38555".
             if (cityParts(t) != null) {
                 val comma = t.indexOf(',')
-                if (comma > 0 && STREET_LINE.matches(t.substring(0, comma).trim())) add(t, i, listOf(line))
+                if (comma > 0 && STREET_LINE.matches(t.substring(0, comma).trim())) add(t.substring(0, comma).trim() + ", " + cleanCity(t.substring(comma + 1).trim()), i, listOf(line))
                 continue
             }
             if (!STREET_LINE.matches(t) || PHONE_LIKE.matches(t)) continue
@@ -83,7 +80,7 @@ object LabelParser {
             if (j < lines.size && UNIT_LINE.matches(lines[j].text)) { unit = lines[j]; j++ }
             val next = lines.getOrNull(j) ?: continue
             if (cityParts(next.text) == null) continue
-            add(listOfNotNull(t, unit?.text).joinToString(" ") + ", " + next.text, i, listOfNotNull(line, unit, next))
+            add(listOfNotNull(t, unit?.text).joinToString(" ") + ", " + cleanCity(next.text), i, listOfNotNull(line, unit, next))
         }
         return Result(rank(found))
     }
@@ -133,6 +130,9 @@ object LabelParser {
     private fun sizeScore(h: Float, maxH: Float): Float = if (maxH <= 0f) 0f else (h / maxH).let { if (it >= 0.93f) 1f else it }
 
     private fun roleOrder(r: Role) = when (r) { Role.DELIVERY -> 0; Role.UNKNOWN -> 1; Role.RETURN -> 2 }
+
+    /** "CITY ST 12345" from a city line, without anything after the ZIP (the ZIP+4 extension only confuses a geocoder). */
+    private fun cleanCity(line: String): String = cityParts(line)?.let { (city, stZip) -> "$city $stZip" } ?: line
 
     /** (city, state+zip) when [line] ends in "ST 12345" with a real state code. */
     private fun cityParts(line: String): Pair<String, String>? {
