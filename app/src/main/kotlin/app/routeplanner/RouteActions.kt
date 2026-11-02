@@ -323,7 +323,7 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
     companion object {
         const val REQ_LOCATION = 2
         /** How long adding must pause before the route is re-timed. */
-        const val REPLAN_DELAY_MS = 1500L
+        const val REPLAN_DELAY_MS = 10_000L
         /** A new stop farther than this (about 50 miles) from the route start gets a "right place?" question. */
         const val FAR_STOP_M = 80_000.0
         /** With a far stop already accepted, stops within this (70 miles) of the start no longer ask. */
