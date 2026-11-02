@@ -69,7 +69,7 @@ An imported address pack (`addresses.sqlite`, one US state, built by `tools/buil
 
 - The search is a line-for-line Kotlin port of `tools/query-address.py`: word tries, a half-typed last word, comma text as city/ZIP filter, then exact → interpolated → nearest mapped house → street centroid, never interpolating across different city/ZIP groups, ranked by locality match, distance band from the start, match type, direction and word fit. The normalizer passes all 124 shared vectors in `tools/address-normalize-cases.json` (the core test reads that file directly). The Kotlin search returns the same answers as the Python reference: the committed fixture replays 11 public queries, and 5 more were checked on the build machine from a local fixture.
 - Ranking (same in Kotlin and the Python reference): a typed city/ZIP that contradicts a result puts it last; then match type (exact house > interpolated > nearest mapped house > street centroid), so an exact house never loses to a nearby estimate; then within 25 km of the start before farther; then street-word fit; then distance.
-- **License (unverified):** Overture lists the National Address Database under the "National Address Database Access and Usage License". Every row says `LicenseRef-Public-Domain-US`. The license text could not be fetched (transportation.gov blocked the request), so it has not been read. Read it before distributing a pack.
+- **License:** the National Address Database is a US federal government work, not subject to copyright (17 U.S.C. § 105), and free to re-use without restriction. Overture's per-record license field says `LicenseRef-Public-Domain-US`. Packs can be shared; the attribution string is kept as a courtesy.
 
 ## Privacy
 

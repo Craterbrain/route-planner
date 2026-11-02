@@ -21,6 +21,7 @@ class SettingsFlow(
     private val pickDocument: (Int) -> Unit,
     private val reqAddresses: Int,
     private val reqTiles: Int,
+    private val downloadRoads: () -> Unit,
 ) {
     fun show() {
         val tiles = Routing.tilesFile(act)
@@ -37,7 +38,8 @@ class SettingsFlow(
             recentCount = prefs.recents.size,
             storageInfo = "The app is using " + app.routeplanner.core.Pruning.size(Storage.usage(act).total) + " of storage (not counting offline maps).",
             diagnosticsInfo = CrashLog.summary(act),
-            roadsInfo = if (tiles.exists()) "Offline road data installed (${tiles.length() / 1_000_000} MB)."
+            roadsInfo = if (tiles.exists()) "Offline road data installed (${tiles.length() / 1_000_000} MB)." +
+                (if (prefs.dataUpdateState.isNotEmpty()) " A newer build is available: tap Download offline data to update." else "")
             else "No offline road data: times come from the server below, or straight-line estimates.",
         )
         Dialogs.settings(act, model, openPermissions = openPermissions,
@@ -50,9 +52,9 @@ class SettingsFlow(
             showTips = tips,
             shareDiagnostics = { DiagnosticsShare.share(act) },
             clearDiagnostics = { CrashLog.clear(act); ui.snack("Crash records cleared") },
-            importRoads = {
-            pickDocument(reqTiles)
-        }) { m ->
+            importRoads = { pickDocument(reqTiles) },
+            downloadRoads = downloadRoads,
+        ) { m ->
             prefs.navApp = if (m.waze) NavApp.WAZE else NavApp.GOOGLE
             prefs.autoNavigate = m.autoNavigate
             prefs.valhallaUrl = m.serverUrl

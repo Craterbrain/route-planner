@@ -5,6 +5,7 @@ import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import androidx.core.view.ViewCompat
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -29,10 +30,21 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
     /** Everything above the list; its height is the sheet's collapsed (peek) height. */
     val header: LinearLayout = ctx.vertical(padH = 16)
     val handle = BottomSheetDragHandleView(ctx)
+    /** Left and right of the drag handle, in the same row: Navigate / Stop / route menu / summary. */
+    private val barStart = ctx.horizontal()
+    private val barEnd = ctx.horizontal()
+    private val handleBar = FrameLayout(ctx).apply {
+        addView(handle, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        addView(barStart, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START or Gravity.CENTER_VERTICAL).apply { marginStart = ctx.dp(16) })
+        addView(barEnd, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.END or Gravity.CENTER_VERTICAL).apply { marginEnd = ctx.dp(8) })
+    }
     private val adapter = StopAdapter(ctx, host)
     val list = RecyclerView(ctx)
     /** The route start, shown as the first row above the stops. */
     private val startRow = ctx.vertical()
+    /** Package finder expanded? Collapsed by default to keep the card short; kept across stops. */
+    private var finderOpen = false
+    private var finderAnim: android.animation.ValueAnimator? = null
 
     init {
         val r = ctx.dpf(28f)
@@ -42,7 +54,7 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
         }
         ViewCompat.setElevation(view, ctx.dpf(6f))
         view.isClickable = true // don't let taps fall through to the map
-        view.addView(handle, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        view.addView(handleBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         view.addView(header, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         list.layoutManager = LinearLayoutManager(ctx)
         list.adapter = adapter
@@ -57,7 +69,10 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
     fun setBottomInset(px: Int) = list.setPadding(ctx.dp(8), ctx.dp(4), ctx.dp(8), ctx.dp(8) + px)
 
     fun render(s: RouteSession?, start: RouteStart?, end: EndMode) {
+        finderAnim?.cancel()
         header.removeAllViews()
+        barStart.removeAllViews()
+        barEnd.removeAllViews()
         renderStartRow(start, end)
         if (start == null) {
             startCard()
@@ -141,13 +156,15 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
     // ---- Headers -------------------------------------------------------------
 
     /** A bold title with the route menu (⋮: New route, Save route, Open route) on the right. */
-    private fun titleRow(title: String, topDp: Int = 0, bottomDp: Int = 0) {
+    private fun titleRow(title: String, topDp: Int = 0, bottomDp: Int = 0, menu: Boolean = true) {
         val row = ctx.horizontal()
         row.addWeighted(ctx.label(22f, bold = true).apply { text = title })
-        val more = ctx.iconButton(R.drawable.ic_more_vert, "Route menu") {}
-        more.setOnClickListener { host.routeMenu(more) }
-        row.addView(more)
+        if (menu) row.addView(routeMenuButton())
         header.addFull(row, topDp = topDp, bottomDp = bottomDp)
+    }
+
+    private fun routeMenuButton() = ctx.iconButton(R.drawable.ic_more_vert, "Route menu") {}.also { b ->
+        b.setOnClickListener { host.routeMenu(b) }
     }
 
     private fun emptyState() {
@@ -173,8 +190,16 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
     }
 
     private fun planningHeader(s: RouteSession, sum: RouteSummary) {
-        titleRow(if (sum.total == 1) "1 stop" else "${sum.total} stops")
-        header.addFull(ctx.label(14f, M.attr.colorOnSurfaceVariant).apply { text = summaryLine(s, sum, remainingOnly = true) })
+        // Time and distance beside the handle on the left; finish time and the route menu on the right.
+        titleRow(if (sum.total == 1) "1 stop" else "${sum.total} stops", menu = false)
+        barStart.addView(ctx.label(14f, M.attr.colorOnSurfaceVariant).apply {
+            text = listOfNotNull(
+                formatDuration(sum.remainingSec),
+                sum.totalMeters.takeIf { it > 0 }?.let { formatDistance(it, imperialUnits()) },
+            ).joinToString(" · ")
+        })
+        barEnd.addView(ctx.label(14f, M.attr.colorOnSurfaceVariant).apply { text = "done by ${ctx.clock(s, sum.finishSec)}" })
+        barEnd.addView(routeMenuButton())
         if (sum.lateStops > 0) header.addFull(ctx.label(13f, M.attr.colorError).apply {
             text = "${sum.lateStops} ${if (sum.lateStops == 1) "stop" else "stops"} can't be reached on time"
         }, topDp = 2)
@@ -199,15 +224,11 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
 
     private fun drivingHeader(s: RouteSession, sum: RouteSummary) {
         val c = s.current ?: return
-        // Stop (back to planning, progress kept) and the route menu, on the right above the card.
-        val bar = ctx.horizontal()
-        bar.addWeighted(android.widget.Space(ctx)) // not a bare View: a wrap_content View fills all the space it is offered
+        // Navigate on the left of the handle; Stop (back to planning, progress kept) and the route menu on the right.
         // Not compact(): its auto-sizing text needs a fixed-width slot and clips a wrap-content button.
-        bar.addView(ctx.button("Stop", M.attr.materialButtonOutlinedStyle, icon = R.drawable.ic_stop) { host.stopRoute() })
-        val more = ctx.iconButton(R.drawable.ic_more_vert, "Route menu") {}
-        more.setOnClickListener { host.routeMenu(more) }
-        bar.addView(more)
-        header.addFull(bar, bottomDp = 2)
+        barStart.addView(ctx.tonal(ctx.button("Navigate", icon = R.drawable.ic_navigation) { host.navigate(c.id) }))
+        barEnd.addView(ctx.button("Stop", M.attr.materialButtonOutlinedStyle, icon = R.drawable.ic_stop) { host.stopRoute() })
+        barEnd.addView(routeMenuButton())
         if (s.dirty) changedBanner()
         val card = MaterialCardView(ctx).apply {
             setCardBackgroundColor(ctx.color(M.attr.colorPrimaryContainer))
@@ -249,18 +270,63 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
         val pkgs = s.finder(c)
         if (pkgs.isNotEmpty()) {
             val pf = ctx.vertical(padH = 12, padV = 8).apply { background = ctx.roundRect(M.attr.colorSurface, 14) }
-            pf.addFull(ctx.label(11f, M.attr.colorOnSurfaceVariant, bold = true).apply { text = "PACKAGE FINDER" })
+            val head = ctx.horizontal().apply { isClickable = true }
+            head.addWeighted(ctx.label(11f, M.attr.colorOnSurfaceVariant, bold = true).apply { text = "PACKAGE FINDER" })
+            val chevron = android.widget.ImageView(ctx).apply {
+                setImageResource(R.drawable.ic_chevron_right)
+                setColorFilter(ctx.color(M.attr.colorOnSurfaceVariant))
+            }
+            head.addView(chevron, LinearLayout.LayoutParams(ctx.dp(24), ctx.dp(24)))
+            pf.addFull(head)
+            val lines = ctx.vertical()
             for (p in pkgs) {
                 // "45-1 · Back Left Shelf" with the last four of its tracking number as a badge on the right.
                 val line = ctx.horizontal()
                 line.addWeighted(ctx.label(15f).apply { text = "${p.id}  ·  ${p.truckZone ?: "no location set"}" })
                 Barcodes.lastFour(p)?.let { line.addView(ctx.lastFourBadge(it)) }
-                pf.addFull(line, topDp = 4)
+                lines.addFull(line, topDp = 4)
             }
+            pf.addFull(lines)
+            fun sync() {
+                lines.visibility = if (finderOpen) View.VISIBLE else View.GONE
+                chevron.rotation = if (finderOpen) 270f else 90f
+                head.contentDescription = "Package finder, ${pkgs.size} packages, " + if (finderOpen) "tap to collapse" else "tap to expand"
+            }
+            // Animate the list's height itself: the header (and so the sheet's peek) follows every frame, with no stale size.
+            head.setOnClickListener {
+                finderAnim?.cancel()
+                finderOpen = !finderOpen
+                head.contentDescription = "Package finder, ${pkgs.size} packages, " + if (finderOpen) "tap to collapse" else "tap to expand"
+                lines.measure(
+                    View.MeasureSpec.makeMeasureSpec((pf.width - pf.paddingLeft - pf.paddingRight).coerceAtLeast(1), View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                val full = lines.measuredHeight
+                val from = if (lines.visibility == View.VISIBLE && lines.height > 0) lines.height else 0
+                val to = if (finderOpen) full else 0
+                lines.visibility = View.VISIBLE
+                finderAnim = android.animation.ValueAnimator.ofInt(from, to).apply {
+                    duration = 200
+                    addUpdateListener {
+                        lines.layoutParams.height = it.animatedValue as Int
+                        lines.requestLayout()
+                        chevron.rotation = 90f + 180f * (it.animatedValue as Int) / full.coerceAtLeast(1)
+                    }
+                    addListener(object : android.animation.AnimatorListenerAdapter() {
+                        private var cancelled = false
+                        override fun onAnimationCancel(a: android.animation.Animator) { cancelled = true }
+                        override fun onAnimationEnd(a: android.animation.Animator) {
+                            if (cancelled) return
+                            lines.layoutParams.height = ViewGroup.LayoutParams.WRAP_CONTENT
+                            sync()
+                        }
+                    })
+                    start()
+                }
+            }
+            sync()
             body.addFull(pf, topDp = 8)
         }
 
-        body.addFull(ctx.tonal(ctx.button("Navigate", icon = R.drawable.ic_navigation) { host.navigate(c.id) }), topDp = 8)
         val actions = ctx.horizontal()
         if (c.status == Status.PENDING) {
             actions.addWeighted(ctx.compact(ctx.button("Failed", M.attr.materialButtonOutlinedStyle) { host.fail(c.id) }), 1f, height = ctx.dp(56), marginDp = 2)
@@ -271,7 +337,7 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
         } else {
             actions.addWeighted(ctx.button("Undo", M.attr.materialButtonOutlinedStyle) { host.undo(c.id) }, marginDp = 2)
         }
-        body.addFull(actions, topDp = 2)
+        body.addFull(actions, topDp = 8)
         header.addFull(card, topDp = 0, bottomDp = 8)
     }
 

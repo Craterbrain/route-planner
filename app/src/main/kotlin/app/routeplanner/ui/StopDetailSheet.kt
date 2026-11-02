@@ -10,7 +10,7 @@ import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.ScrollView
+import androidx.core.widget.NestedScrollView
 import android.widget.Toast
 import app.routeplanner.R
 import app.routeplanner.SessionStore
@@ -48,7 +48,7 @@ class StopDetailSheet(private val act: Activity, private val host: RouteHost, pr
     var onClosed: (() -> Unit)? = null
 
     fun show() {
-        dialog.setContentView(ScrollView(act).apply { addView(body) })
+        dialog.setContentView(NestedScrollView(act).apply { addView(body) })
         dialog.behavior.state = BottomSheetBehavior.STATE_EXPANDED
         dialog.behavior.skipCollapsed = true
         dialog.setOnDismissListener { saveNotes(); onClosed?.invoke() }
@@ -177,24 +177,28 @@ class StopDetailSheet(private val act: Activity, private val host: RouteHost, pr
             closeThen { host.pickDropOff(st.id) }
         }, topDp = 4)
 
-        section("Stop")
+        val outlined = M.attr.materialButtonOutlinedStyle
         if (st.status == Status.PENDING && s.started && s.current?.id != st.id) {
-            body.addFull(act.button("Make next", M.attr.borderlessButtonStyle) {
+            body.addFull(act.button("Make next", outlined) {
                 session()?.makeNext(st.id); commit(); host.update(); render()
-            }.leftAligned())
+            }, topDp = 16)
         }
-        if (st.status == Status.PENDING) body.addFull(act.button("Move to position…", M.attr.borderlessButtonStyle) {
+        if (st.status == Status.PENDING) body.addFull(act.button("Move stop to #", outlined) {
             Dialogs.moveTo(act, st.optimizedIndex, s.stops.size) { n -> host.moveStop(st.id, n - 1); render() }
-        }.leftAligned())
-        if (s.started && s.current?.id != st.id) body.addFull(act.button("Work on this stop now", M.attr.borderlessButtonStyle) {
+        }, topDp = 8)
+        if (s.started && s.current?.id != st.id) body.addFull(act.button("Work on this stop now", outlined) {
             closeThen { session()?.jumpTo(st.id); commit() }
-        }.leftAligned())
-        body.addFull(act.button("Remove stop", M.attr.borderlessButtonStyle) {
+        }, topDp = 8)
+        body.addFull(act.button("Remove stop", icon = R.drawable.ic_delete) {
             Dialogs.confirm(act, "Remove stop?", st.address, "Remove") {
                 notes = null // nothing to save on a removed stop
                 session()?.removeStop(st.id); commit(); dialog.dismiss(); host.update()
             }
-        }.apply { setTextColor(act.color(M.attr.colorError)) }.leftAligned(), bottomDp = 16)
+        }.apply {
+            backgroundTintList = android.content.res.ColorStateList.valueOf(act.color(M.attr.colorError))
+            setTextColor(act.color(M.attr.colorOnError))
+            iconTint = android.content.res.ColorStateList.valueOf(act.color(M.attr.colorOnError))
+        }, topDp = 16, bottomDp = 16)
     }
 
     private fun MaterialButton.leftAligned() = apply { gravity = Gravity.START or Gravity.CENTER_VERTICAL }

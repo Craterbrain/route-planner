@@ -222,7 +222,7 @@ object Dialogs {
     )
 
     fun settings(ctx: Context, m: SettingsModel, openPermissions: () -> Unit, importAddresses: () -> Unit, manageRecents: () -> Unit,
-                 importRoads: () -> Unit, openOfflineMaps: () -> Unit, openStorage: () -> Unit, showTips: () -> Unit,
+                 importRoads: () -> Unit, downloadRoads: () -> Unit, openOfflineMaps: () -> Unit, openStorage: () -> Unit, showTips: () -> Unit,
                  shareDiagnostics: () -> Unit, clearDiagnostics: () -> Unit, onSave: (SettingsModel) -> Unit) {
         val box = ctx.vertical(padH = 24, padV = 8)
         box.addFull(ctx.button("Permissions & network…", M.attr.materialButtonOutlinedStyle) { openPermissions() }, bottomDp = 4)
@@ -243,6 +243,7 @@ object Dialogs {
 
         box.addFull(ctx.label(12f, M.attr.colorPrimary, bold = true).apply { text = "ROAD TIMES" }, topDp = 16)
         box.addFull(ctx.label(14f).apply { text = m.roadsInfo })
+        box.addFull(ctx.button("Download offline data…", M.attr.materialButtonOutlinedStyle) { downloadRoads() }, topDp = 4)
         box.addFull(ctx.button("Import road data (.tar)", M.attr.materialButtonOutlinedStyle) { importRoads() }, topDp = 4)
         box.addFull(ctx.label(13f, M.attr.colorOnSurfaceVariant).apply { text = "Optional Valhalla server (used only without road data):" }, topDp = 8)
         val url = EditText(ctx).apply {
@@ -279,7 +280,7 @@ object Dialogs {
         box.addFull(ctx.button("Import address data (.sqlite)", M.attr.materialButtonOutlinedStyle) { importAddresses() }, topDp = 4)
         m.addressAttribution?.let { a ->
             box.addFull(ctx.label(12f, M.attr.colorOnSurfaceVariant).apply {
-                text = a + "\nLicense: per-record public domain (LicenseRef-Public-Domain-US); the NAD Access and Usage License text has not been verified."
+                text = a + "\nSource data is a US federal government work (public domain)."
             }, topDp = 4)
         }
         box.addFull(ctx.label(12f, M.attr.colorPrimary, bold = true).apply { text = "STORAGE" }, topDp = 16)

@@ -45,12 +45,11 @@ towns). We took ideas only. No Vela code was used.
   > licensed under the National Address Database Access and Usage License.
   > Accessed: 2026-10-15.
 
-- **Not verified:** the text of the "NAD Access and Usage License" and the
-  NAD disclaimer page. transportation.gov returned HTTP 403 to our fetcher.
-  The per-record `LicenseRef-Public-Domain-US` suggests public domain, but
-  someone should read
-  <https://www.transportation.gov/mission/open/gis/national-address-database/national-address-database-nad-disclaimer>
-  before release.
+- **Resolved:** the NAD is a work of the US federal government and as such is
+  not subject to copyright protection under 17 U.S.C. § 105. It is available
+  for re-use without limitation or restriction (confirmed by the project owner,
+  2026-11-01). The packs can be redistributed. The attribution string below is
+  kept as a courtesy and to credit Overture and the states that contribute data.
 - **Attribution string** (stored in `meta.attribution`; show it on the
   Settings/About screen next to the OSM and Valhalla credits):
 
@@ -557,5 +556,3 @@ tools/build-addresses.py --state KY --bbox -89.6,36.4,-81.9,39.2 --out data/ky/a
   the query parser does not recognise "MM" when it is typed.
 - **Street names:** "MCDONALD" displays as "Mcdonald". The norm is
   unaffected.
-- **Verification gap:** the NAD usage license text could not be fetched (see
-  above).

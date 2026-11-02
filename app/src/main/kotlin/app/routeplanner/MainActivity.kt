@@ -49,7 +49,48 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
     private lateinit var prefs: Prefs
     private val scanFlow by lazy { ScanFlow(this, actions, this, { search }, { currentStart()?.point }, { map != null }, ::pickDropOff) }
     private val settings by lazy {
-        SettingsFlow(this, prefs, this, { showPermissions() }, { offlineMaps.show() }, { storageFlow.show() }, { Welcome.show(this) }, ::pickDocument, REQ_ADDRESSES, REQ_TILES)
+        SettingsFlow(this, prefs, this, { showPermissions() }, { offlineMaps.show() }, { storageFlow.show() }, { Welcome.show(this) }, ::pickDocument, REQ_ADDRESSES, REQ_TILES, { roadDownload.show(blocking = false) })
+    }
+    private val roadDownload by lazy {
+        RoadDownloadFlow(this, {
+            roadKey = null
+            updateRoadPath(SessionStore.session, currentStart())
+            prefs.dataUpdateState = ""
+            snack("Routing with on-device roads")
+        }, { pickDocument(REQ_TILES) })
+    }
+    private var checkedUpdates = false
+
+    /** Once a week at most, ask GitHub whether newer road / address data is published, and tell the user (never downloads by itself). */
+    private fun checkDataUpdates() {
+        if (checkedUpdates || isFinishing || isDestroyed) return
+        checkedUpdates = true
+        val day = 24 * 3_600_000L
+        if (prefs.dataUpdateState.isNotEmpty()) { announceDataUpdate(); return } // known from an earlier check; nag once per launch
+        if (System.currentTimeMillis() - prefs.dataCheckedAt < 7 * day || NetStatus.systemSaysOffline(this)) return
+        actions.background({ RoadDownload.updateAvailable(this) }) { r ->
+            r.onFailure { AppLog.w("data update check failed", it) }
+            val s = r.getOrNull()
+            if (r.isSuccess) prefs.dataCheckedAt = System.currentTimeMillis()
+            if (s != null) { prefs.dataUpdateState = s; announceDataUpdate() }
+        }
+    }
+
+    private fun announceDataUpdate() {
+        val s = prefs.dataUpdateState.takeIf { it.isNotEmpty() } ?: return
+        val name = s.split('-').joinToString(" ") { it.replaceFirstChar(Char::uppercase) }
+        snack("Newer road and address data is available for $name", "Update") { roadDownload.show(blocking = false, preselect = s) }
+    }
+
+    private var askedRoads = false
+    private var firstRun = false
+
+    /** Without road data (and no server set) the app can't route along roads: ask once per launch, blocking. */
+    private fun maybeAskRoads() {
+        if (askedRoads || isFinishing || isDestroyed) return
+        askedRoads = true
+        if (Routing.tilesFile(this).exists() || prefs.valhallaUrl.isNotEmpty()) { checkDataUpdates(); return }
+        roadDownload.show(blocking = true)
     }
     private val storageFlow by lazy { StorageFlow(this, actions, this) }
     private val library by lazy { RouteLibraryFlow(this, actions, prefs, this) }
@@ -180,13 +221,14 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         root.post { GoogleTransport.warmUp(this) } // async; plain HTTP until Play services' Cronet is ready
         if (!prefs.setupShown) {
             prefs.setupShown = true
+            firstRun = true
             root.post { Welcome.show(this) { showPermissions() } } // welcome first, then the permissions list
         }
     }
 
     private fun showPermissions() {
         if (isFinishing || isDestroyed || permissions?.isShowing == true) return
-        permissions = PermissionsSheet(this, { prefs.geocoderUrl }) { permissions = null }.also { it.show() }
+        permissions = PermissionsSheet(this, { prefs.geocoderUrl }) { permissions = null; maybeAskRoads() }.also { it.show() }
     }
 
     private fun hideKeyboard() {
@@ -251,7 +293,8 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
     private fun updateSheetGeometry() {
         if (isDestroyed) return
         val barBottom = topInset + dp(8) + topBar.height
-        val peek = (sheet.handle.height + sheet.header.height + dp(4))
+        // The collapsed sheet also clears the navigation bar, so no button sits under it.
+        val peek = (sheet.handle.height + sheet.header.height + dp(4) + bottomInset)
             .coerceAtMost((root.height * 0.62f).toInt().coerceAtLeast(dp(120)))
             .coerceAtLeast(dp(96))
         behavior.peekHeight = peek
@@ -329,6 +372,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
     override fun onStart() {
         super.onStart()
         roadKey = null // try the road path again (road data may have been imported since)
+        if (!firstRun) window.decorView.post { maybeAskRoads() } // first launch asks after the welcome and permissions
         map?.onStart()
         SessionStore.observe(refresh)
         NetStatus.observe(netChanged)

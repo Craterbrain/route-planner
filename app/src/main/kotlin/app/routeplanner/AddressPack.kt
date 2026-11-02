@@ -90,6 +90,11 @@ object AddressPack {
     fun import(ctx: Context, uri: Uri): Map<String, String> {
         val part = File(ctx.filesDir, "addresses.sqlite.part")
         (ctx.contentResolver.openInputStream(uri) ?: error("Couldn't read the file")).use { i -> part.outputStream().use { o -> i.copyTo(o, 1 shl 16) } }
+        return install(ctx, part)
+    }
+
+    /** Validates a finished addresses.sqlite.part and moves it into place. Blocking. */
+    fun install(ctx: Context, part: File): Map<String, String> {
         val meta = try { open(part).use { validate(it) } } catch (e: Exception) { part.delete(); throw e }
         synchronized(this) {
             db?.close(); db = null

@@ -25,7 +25,7 @@ import com.google.android.material.R as M
  * position == session index), so drag/drop maps straight to a move.
  *
  * Gestures (as in Circuit): swipe left = Delivered (or Undo on a finished
- * stop), swipe right = Navigate, drag the handle to reorder, tap for details.
+ * stop), swipe right = Navigate, long-press to reorder, tap for details.
  */
 class StopAdapter(private val ctx: Context, private val host: RouteHost) : RecyclerView.Adapter<StopAdapter.Holder>() {
 
@@ -153,7 +153,7 @@ class StopAdapter(private val ctx: Context, private val host: RouteHost) : Recyc
         val finished = s.status != Status.PENDING
         h.root.alpha = if (finished) 0.6f else 1f
         h.root.background = if (r.current) ctx.roundRect(M.attr.colorSecondaryContainer, 16) else null
-        h.handle.visibility = if (finished) android.view.View.INVISIBLE else android.view.View.VISIBLE
+        h.handle.visibility = android.view.View.GONE // reorder by long-press instead
         h.root.contentDescription = "Stop ${s.optimizedIndex}, ID ${s.entryNo}, ${s.address}, ${s.status.name.lowercase()}"
         h.root.setOnClickListener { host.openStop(s.id) }
     }
@@ -161,7 +161,7 @@ class StopAdapter(private val ctx: Context, private val host: RouteHost) : Recyc
     private inner class Touch : ItemTouchHelper.Callback() {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = ctx.dpf(15f); isFakeBoldText = true }
 
-        override fun isLongPressDragEnabled() = false
+        override fun isLongPressDragEnabled() = true
 
         override fun getMovementFlags(rv: RecyclerView, vh: RecyclerView.ViewHolder): Int {
             val pos = vh.adapterPosition

@@ -47,13 +47,10 @@ ATTRIBUTION = (
     "contribute to the database."
 )
 LICENSE_NOTE = (
-    "Overture addresses theme carries per-source licenses (no single theme "
-    "license). Per-record sources[].license for these rows: {licenses}. "
-    "Overture attribution page (accessed 2026-10-31) states: \"The National "
-    "Address Database is licensed under the National Address Database Access "
-    "and Usage License.\" NAD disclaimer: "
-    "https://www.transportation.gov/mission/open/gis/national-address-database/"
-    "national-address-database-nad-disclaimer"
+    "Source: the US National Address Database (NAD), via the Overture addresses theme "
+    "(per-record sources[].license for these rows: {licenses}). The NAD is a work of the "
+    "US federal government and so is not subject to copyright protection (17 U.S.C. 105); "
+    "it is available for re-use without limitation or restriction."
 )
 
 # Words kept upper case when prettifying ALL-CAPS NAD names for display.
@@ -168,6 +165,20 @@ def county_polygon(con, state, county, release, bbox, cache_dir):
         f.write(div_id + "\n" + wkt)
     os.replace(path + ".part", path)
     return div_id, wkt
+
+
+def state_bbox(con, state, release):
+    """Padded bounding box of a state (or DC) from Overture divisions, for Parquet row-group pruning."""
+    row = con.execute(f"""
+        SELECT min(bbox.xmin), min(bbox.ymin), max(bbox.xmax), max(bbox.ymax)
+        FROM read_parquet('{DIVISIONS_PATH.format(release=release)}')
+        WHERE country = 'US' AND region = 'US-{state}' AND class = 'land'
+          AND subtype IN ('region', 'county')""").fetchone()
+    if row is None or row[0] is None:
+        raise SystemExit(f"no Overture division found for US-{state}; pass --bbox")
+    box = (round(row[0] - 0.05, 3), round(row[1] - 0.05, 3), round(row[2] + 0.05, 3), round(row[3] + 0.05, 3))
+    log(f"bbox for {state} from Overture divisions: {box}")
+    return box
 
 
 MIN_ZIP_ADDRESSES = 25  # smaller "ZIPs" in NAD are typos/strays ('3855', '39558')
@@ -461,7 +472,7 @@ def main():
     elif state in STATE_BBOX:
         bbox = STATE_BBOX[state]
     else:
-        ap.error(f"no built-in bbox for {state}; pass --bbox xmin,ymin,xmax,ymax")
+        bbox = None  # looked up from Overture divisions once the connection is open
     if selftest() != 0:
         print("normalization self-test failed; refusing to build", file=sys.stderr)
         return 1
@@ -481,6 +492,8 @@ def main():
     con.execute(f"SET threads={a.threads}")
     con.execute("INSTALL httpfs; LOAD httpfs; INSTALL spatial; LOAD spatial; "
                 "SET s3_region='us-west-2';")
+    if bbox is None:
+        bbox = state_bbox(con, state, a.release)
     fetch(con, state, a.release, bbox, cache)
     region = None
     if regional:

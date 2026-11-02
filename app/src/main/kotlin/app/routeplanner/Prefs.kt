@@ -24,6 +24,16 @@ class Prefs(ctx: Context) {
         get() = sp.getString("valhallaUrl", "") ?: ""
         set(v) = sp.edit().putString("valhallaUrl", v.trim()).apply()
 
+    /** When the app last asked GitHub whether newer road / address data exists (ms). */
+    var dataCheckedAt: Long
+        get() = sp.getLong("dataCheckedAt", 0L)
+        set(v) = sp.edit().putLong("dataCheckedAt", v).apply()
+
+    /** State whose road / address data has a newer published build; blank when up to date. */
+    var dataUpdateState: String
+        get() = sp.getString("dataUpdateState", "") ?: ""
+        set(v) = sp.edit().putString("dataUpdateState", v).apply()
+
     var navApp: NavApp
         get() = runCatching { NavApp.valueOf(sp.getString("navApp", "")!!) }.getOrDefault(NavApp.GOOGLE)
         set(v) = sp.edit().putString("navApp", v.name).apply()

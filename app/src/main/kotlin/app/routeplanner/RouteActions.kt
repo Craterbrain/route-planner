@@ -279,6 +279,7 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
             (act.contentResolver.openInputStream(uri) ?: error("Couldn't read the file")).use { i -> tmp.outputStream().use { o -> i.copyTo(o) } }
             val dest = Routing.tilesFile(act)
             check(tmp.renameTo(dest) || (dest.delete() && tmp.renameTo(dest))) { "Couldn't move the file into place" }
+            File(act.filesDir, "offline-data.json").delete() // a hand-imported file has no published build to compare with
             Routing.source(act, prefs).label
         }) { r ->
             dlg.close()
