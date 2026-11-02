@@ -50,6 +50,8 @@ android {
     }
     buildTypes {
         debug {
+            // Installs beside the release app (different package), so test builds never fight its signature or data.
+            applicationIdSuffix = ".debug"
             signingConfigs.findByName("app")?.let { signingConfig = it }
         }
         release {

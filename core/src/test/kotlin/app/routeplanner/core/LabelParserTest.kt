@@ -147,4 +147,44 @@ class LabelParserTest {
         ).map { LabelParser.OcrLine(it.first, it.second) })
         assertEquals("8681 Highway 70e, Crossville TN 38555", r.primary!!.address)
     }
+
+    @Test fun strayLinesBetweenTheStreetAndCityDoNotHideTheAddress() {
+        val r = LabelParser.parse(listOf("DONALD NGUYEN", "1407 KAWA CT", "S.", "Start of my test", "APT 11", "CROSSVILLE TN 38572-1287")
+            .map { LabelParser.OcrLine(it, 40f) })
+        assertEquals("1407 Kawa Ct Apt 11, Crossville TN 38572", r.primary!!.address)
+        // ... but a second street line is never swallowed as junk.
+        val two = LabelParser.parse(listOf("1 A ST", "2 B ST", "TOWN TN 11111").map { LabelParser.OcrLine(it, 40f) })
+        assertEquals(listOf("2 B St, Town TN 11111"), two.addresses)
+    }
+
+    @Test fun endorsementAboveTheAddressMakesItTheRecipientEvenAtEqualPrintSize() {
+        val r = LabelParser.parse(listOf("RO68" to 23f, "9691 SAMPLE WAY" to 23f, "NASHVILLE TN 37201" to 21f, "ADDRESS SERVICE REQUESTED" to 14f,
+            "CHARLES MITCHELL" to 20f, "289 NEWTON LN" to 20f, "LOT 33" to 19f, "CROSSVILLE TN 38572-8497" to 19f).map { LabelParser.OcrLine(it.first, it.second) })
+        assertEquals("289 Newton Ln Lot 33, Crossville TN 38572", r.primary!!.address)
+        assertEquals(LabelParser.Role.DELIVERY, r.primary!!.role)
+    }
+
+    @Test fun ocrNoiseInTheStreetLineIsCleaned() {
+        assertEquals("17 Killearn Ct, Fairfield Glade TN 38558", LabelParser.parse("E 17 KILLEARN CT\nFAIRFIELD GLADE TN 38558-7656").primary!!.address)
+        assertEquals("1035 Oceola Cir, Crossville TN 38572", LabelParser.parse("1035 0CEOLA CIR\nCROSSVILLE TN 38572").primary!!.address)
+        assertEquals("510 10th St, Crossville TN 38555", LabelParser.parse("510 10TH ST\nCROSSVILLE TN 38555").primary!!.address)
+    }
+
+    @Test fun aStreetTypeRunIntoTheNameIsSplitButOrdinaryWordsAreNot() {
+        assertEquals("32 Dawn Ct, Crossville TN 38555", LabelParser.parse("32 DAWNCT\nCROSSVILLE TN 38555-1259").primary!!.address)
+        assertEquals("9 Old Mill Ln, Crossville TN 38555", LabelParser.parse("9 OLD MILLLN\nCROSSVILLE TN 38555").primary!!.address)
+        assertEquals("700 Forest Dr, Crossville TN 38555", LabelParser.parse("700 FOREST DR\nCROSSVILLE TN 38555").primary!!.address)
+        assertEquals("12 Howard Rd, Crossville TN 38555", LabelParser.parse("12 HOWARD RD\nCROSSVILLE TN 38555").primary!!.address)
+        assertEquals("5 Direct Ct, Crossville TN 38555", LabelParser.parse("5 DIRECT CT\nCROSSVILLE TN 38555").primary!!.address)
+    }
+
+    @Test fun aCityLineBrokenInTwoIsPutBackTogether() {
+        val r = LabelParser.parse(listOf("PAMELA EDWARDS", "295 TIMOTHY DRIVE", "CROSSVILLE TN", "38572-7882").map { LabelParser.OcrLine(it, 50f) })
+        assertEquals("295 Timothy Drive, Crossville TN 38572", r.primary!!.address)
+    }
+
+    @Test fun zipPlusFourRunTogetherWithoutADashIsStillAZip() {
+        assertEquals("214 Lollar Pl Apt 2, Monterey TN 38574", LabelParser.parse("214 LOLLAR PL\nAPT 2\nMONTEREY TN 385744076").primary!!.address)
+        assertEquals("214 Lollar Pl, Monterey TN 38574", LabelParser.parse("214 LOLLAR PL\nMONTEREY TN\n385744076").primary!!.address)
+    }
 }

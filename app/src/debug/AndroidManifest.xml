@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Debug builds only: fed over adb by the label test harness (see tools/label-lab/test_scanner.py). -->
+        <receiver android:name="app.routeplanner.DebugOcr" android:exported="true" />
+    </application>
+</manifest>

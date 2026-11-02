@@ -176,5 +176,14 @@ addEventListener("keydown", (e) => {
   if (e.code === "Space") { e.preventDefault(); newAddress(); }
   else if (e.key === "r" || e.key === "R") $("reroll").click();
 });
+const qs = new URLSearchParams(location.search);
+for (const [k, id] of [["warp", "warp"], ["dirt", "dirtAmt"], ["soft", "soft"]]) if (qs.has(k)) $(id).value = qs.get(k);
+if (qs.has("shot")) document.body.classList.add("shot");
+if (qs.has("fit")) {      // scale the label to fill the window height, as a phone camera would like it
+  const fit = () => { const k = Math.min((innerHeight - 40) / 1100, innerWidth / 760); $("scene").style.transform = `scale(${k})`; $("scene").style.transformOrigin = "top center"; };
+  fit(); addEventListener("resize", fit);
+}
+if (qs.has("remote")) { let seen = null; setInterval(async () => { const c = await (await fetch("/api/cmd", { cache: "no-store" })).json(); if (seen !== null && c.n !== seen) newAddress(); seen = c.n; }, 700); }   // ?remote: the test driver advances labels
+if (qs.has("auto")) setInterval(() => newAddress(), Math.max(3, +qs.get("auto")) * 1000);   // ?auto=SECONDS: a new label on a timer
 if (/clean/.test(location.search)) for (const id of ["warp", "dirtAmt", "soft"]) $(id).value = 0; // ?clean: undamaged label
-if (window.__first) { current = window.__first; seed = Math.floor(Math.random() * 1e6); render(); } else newAddress();
+if (window.__first) { current = window.__first; seed = qs.has("seed") ? +qs.get("seed") * 31 + 7 : Math.floor(Math.random() * 1e6); render(); } else newAddress();

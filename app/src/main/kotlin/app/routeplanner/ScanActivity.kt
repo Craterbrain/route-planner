@@ -153,6 +153,11 @@ class ScanActivity : AppCompatActivity() {
         if (media == null || finished || now - lastRun < 350) { proxy.close(); return }
         lastRun = now
         val image = InputImage.fromMediaImage(media, proxy.imageInfo.rotationDegrees)
+        // Only text on the bright label itself counts; the surroundings are not part of the shipping label.
+        val box = runCatching {
+            val y = media.planes[0]; val buf = y.buffer; val rs = y.rowStride; val ps = y.pixelStride
+            LabelReading.labelRegion(media.width, media.height, proxy.imageInfo.rotationDegrees) { px, py -> buf.get(py * rs + px * ps).toInt() and 0xFF }
+        }.getOrNull()
         val wantText = mode == MODE_LABEL
         val pending = java.util.concurrent.atomic.AtomicInteger(if (wantText) 2 else 1)
         fun done() { if (pending.decrementAndGet() == 0) proxy.close() }
@@ -166,33 +171,14 @@ class ScanActivity : AppCompatActivity() {
             text.process(image)
                 .addOnSuccessListener { t ->
                     // Lines in reading order, each with its printed height (the bigger address is the recipient's).
-                    val lines = readingOrder(t.textBlocks.flatMap { it.lines })
+                    if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0)
+                        android.util.Log.i("RPDebug", "cam region=${box?.mask?.count { it }} cells of ${box?.mask?.size}, ${t.textBlocks.sumOf { it.lines.size }} raw lines, ${t.textBlocks.sumOf { b -> b.lines.count { l -> LabelReading.inside(listOf(l), box).isNotEmpty() } }} kept")
+                    val lines = LabelReading.order(LabelReading.inside(t.textBlocks.flatMap { it.lines }, box))
                         .map { LabelParser.OcrLine(it.text, (it.boundingBox?.height() ?: 0).toFloat()) }
                     if (lines.isNotEmpty()) runOnUiThread { onLines(lines) }
                 }
                 .addOnCompleteListener { done() }
         }
-    }
-
-    /**
-     * Lines top to bottom, taken one by one rather than block by block: ML Kit's own grouping can put a wider line (the
-     * city line with its ZIP+4) ahead of the street line above it, and then no address is found. Lines that share a row
-     * (a box printed beside an address) go left to right.
-     */
-    private fun readingOrder(lines: List<com.google.mlkit.vision.text.Text.Line>): List<com.google.mlkit.vision.text.Text.Line> {
-        val sorted = lines.filter { it.boundingBox != null }.sortedBy { it.boundingBox!!.centerY() }
-        val out = ArrayList<com.google.mlkit.vision.text.Text.Line>()
-        var row = ArrayList<com.google.mlkit.vision.text.Text.Line>()
-        var rowY = 0f
-        fun flush() { out += row.sortedBy { it.boundingBox!!.left }; row = ArrayList() }
-        for (l in sorted) {
-            val b = l.boundingBox!!
-            if (row.isNotEmpty() && b.centerY() - rowY > b.height() * 0.6f) flush()
-            if (row.isEmpty()) rowY = b.centerY().toFloat()
-            row += l
-        }
-        flush()
-        return out
     }
 
     /** Barcode values from the last [windowMs]. */
@@ -219,6 +205,11 @@ class ScanActivity : AppCompatActivity() {
     private fun onLines(lines: List<LabelParser.OcrLine>) {
         if (finished) return
         val found = LabelParser.parse(lines).candidates
+        if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) // debug builds only: what the scanner saw, in full
+{
+                lines.forEachIndexed { i, l -> android.util.Log.i("RPDebug", "cam line $i h=${l.height.toInt()}: ${l.text}") }
+                android.util.Log.i("RPDebug", "cam primary: ${found.firstOrNull()?.address} (${found.firstOrNull()?.role}), ${found.size} addresses")
+            }
         // Counts only, never the text: enough to tell "the label wasn't read" from "read but not recognised as an address".
         val shape = "${lines.size} lines, ${lines.count { it.text.any(Char::isDigit) }} with digits, ${found.size} addresses ${found.map { it.role.name.lowercase() }}"
         if (shape != lastShape) {

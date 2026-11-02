@@ -45,8 +45,11 @@ object LabelParser {
     // ZIP+4 may be written with a hyphen, en dash or em dash, with or without spaces around it.
     // Whatever follows the five-digit ZIP on that line (the "-6923" extension, or OCR's idea of it: a dropped, mangled or
     // misread dash and digits, stray marks) is ignored, and removed from the address handed to the geocoder.
-    private val CITY_LINE = Regex("""^(.*?[A-Za-z].*?)[,\s]+([A-Za-z]{2})\s+(\d{5})(?!\d)[^\n]{0,16}$""")
+    private val CITY_LINE = Regex("""^(.*?[A-Za-z].*?)[,\s]+([A-Za-z]{2})\s+(\d{5})(?:\d{4}(?!\d)|(?!\d))[^\n]{0,16}$""")
     private val ENDORSEMENT = Regex("""SERVICE\s+REQUESTED|ADDRESS\s+CORRECTION|FORWARDING""", RegexOption.IGNORE_CASE)
+    private val STATE_TAIL = Regex("""^.*[A-Za-z].*[,\s]([A-Za-z]{2})$""")
+    private val ZIP_HEAD = Regex("""^\d{5}(?:\d{4}(?!\d)|(?!\d))[^\n]{0,16}$""")
+    private val RETURN_ENDORSEMENT = Regex("""RETURN\s+SERVICE""", RegexOption.IGNORE_CASE)
     private val STREET_LINE = Regex("""^\d+[A-Za-z]?(?:\s+|-)\S.*[A-Za-z].*$""")
     private val UNIT_LINE = Regex("""^(?:APT|APARTMENT|UNIT|STE|SUITE|LOT|BLDG|#)\.?\s*\S+.*$""", RegexOption.IGNORE_CASE)
     private val PHONE_LIKE = Regex("""^\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}$""")
@@ -57,7 +60,14 @@ object LabelParser {
     fun parse(text: String): Result = parse(text.lines().map { OcrLine(it) })
 
     fun parse(raw: List<OcrLine>): Result {
-        val lines = raw.map { OcrLine(it.text.replace(Regex("""\s+"""), " ").trim(), it.height) }.filter { it.text.isNotEmpty() }
+        val cleaned = raw.map { OcrLine(clean(it.text), it.height) }.filter { it.text.isNotEmpty() }
+        // OCR sometimes breaks the city line in two: "CROSSVILLE TN" / "38572-7882". Put it back together.
+        val lines = ArrayList<OcrLine>()
+        for (l in cleaned) {
+            val prev = lines.lastOrNull()
+            if (prev != null && STATE_TAIL.matches(prev.text) && ZIP_HEAD.matches(l.text)) lines[lines.size - 1] = OcrLine(prev.text + " " + l.text, (prev.height + l.height) / 2f)
+            else lines += l
+        }
         val found = ArrayList<Candidate>()
         val seen = HashSet<String>()
         fun add(text: String, startLine: Int, used: List<OcrLine>) {
@@ -75,15 +85,48 @@ object LabelParser {
                 continue
             }
             if (!STREET_LINE.matches(t) || PHONE_LIKE.matches(t)) continue
-            var j = i + 1
+            // The city line follows the street (after an optional unit line). A few stray lines may sit between them:
+            // other print beside the address (a postage box, text on the next parcel) interleaves with it in reading order.
             var unit: OcrLine? = null
-            if (j < lines.size && UNIT_LINE.matches(lines[j].text)) { unit = lines[j]; j++ }
-            val next = lines.getOrNull(j) ?: continue
-            if (cityParts(next.text) == null) continue
-            add(listOfNotNull(t, unit?.text).joinToString(" ") + ", " + cleanCity(next.text), i, listOfNotNull(line, unit, next))
+            var next: OcrLine? = null
+            var j = i + 1
+            while (j < lines.size && j <= i + 4) {
+                val l = lines[j].text
+                if (cityParts(l) != null) { next = lines[j]; break }
+                if (unit == null && UNIT_LINE.matches(l)) unit = lines[j]
+                else if (STREET_LINE.matches(l)) break            // another street line: this one has no city of its own
+                j++
+            }
+            val city = next ?: continue
+            add(listOfNotNull(t, unit?.text).joinToString(" ") + ", " + cleanCity(city.text), i, listOfNotNull(line, unit, city))
         }
         return Result(rank(found))
     }
+
+    // A stray mark or letter read from a neighbouring barcode / box edge glued in front of the house number ("E 17 KILLEARN CT").
+    private val LEADING_JUNK = Regex("""^[^A-Za-z0-9#]*[A-Za-z|\[\]]\s+(?=\d+[A-Za-z]?\s+[A-Za-z])""")
+    private val LETTERISH = Regex("""^[A-Za-z01]+$""")
+
+    /**
+     * Tidies one OCR line: collapses spaces, drops a stray leading character before a house number, and reads 0 / 1 as the
+     * letters O / I inside a word that is otherwise letters ("0CEOLA" -> "OCEOLA"). A leading house number and ordinals
+     * ("10TH", "1ST") are left alone.
+     */
+    private fun clean(raw: String): String {
+        var t = raw.replace(Regex("""\s+"""), " ").trim().replace(LEADING_JUNK, "")
+        if (t.none { it.isLetter() }) return t
+        t = t.split(' ').withIndex().joinToString(" ") { (i, w) ->
+            val letters = w.count { it.isLetter() }
+            if (i > 0 && letters >= 2 && w.any { it == '0' || it == '1' } && LETTERISH.matches(w) && !ORDINAL.matches(w))
+                w.replace('0', 'O').replace('1', 'I') else w
+        }
+        // A street type run into the name ("DAWNCT" -> "DAWN CT"): only for endings that are not also common word endings
+        // (ST, RD, DR, AVE would split "FOREST", "HOWARD", "ELEVEN").
+        t = t.replace(GLUED_SUFFIX) { m -> m.groupValues[1] + " " + m.groupValues[2].uppercase() }
+        return t
+    }
+    private val GLUED_SUFFIX = Regex("""(?<=^\d{1,6}[A-Za-z]? (?:[A-Za-z]{2,20} )?)([A-Za-z]{3,}?)(CT|LN|CIR|TRL)$""", RegexOption.IGNORE_CASE)
+    private val ORDINAL = Regex("""^\d+(?:ST|ND|RD|TH)$""", RegexOption.IGNORE_CASE)
 
     private val NAME_LINE = Regex("""^[A-Za-z][A-Za-z.'-]*(?: [A-Za-z][A-Za-z.'-]*){1,3}$""")
 
@@ -100,7 +143,8 @@ object LabelParser {
             val t = lines[k].text
             // A line that is itself an address (or the previous address's city line) ends the search.
             if (k < at && (cityParts(t) != null)) break
-            if (ENDORSEMENT.containsMatchIn(t)) continue
+            // "ADDRESS SERVICE REQUESTED" is printed between the return block and the recipient's: what follows it is the recipient.
+            if (ENDORSEMENT.containsMatchIn(t)) { if (k < at && !RETURN_ENDORSEMENT.containsMatchIn(t)) return Role.DELIVERY; continue }
             if (RETURN_CUE.containsMatchIn(t)) return Role.RETURN
             if (DELIVER_CUE.containsMatchIn(t)) return Role.DELIVERY
         }
@@ -145,9 +189,11 @@ object LabelParser {
     /** ALL-CAPS labels become Title Case; the state code and unit designators stay upper-case. */
     private fun pretty(s: String): String {
         if (s.any { it.isLowerCase() }) return s
-        return s.split(' ').joinToString(" ") { w ->
+        val words = s.split(' ')
+        return words.withIndex().joinToString(" ") { (i, w) ->
             when {
-                w.length == 2 && w in STATES -> w
+                // Only the token just before the ZIP is the state ("CT" in "1407 KAWA CT" is a street type).
+                w.length == 2 && w in STATES && words.getOrNull(i + 1)?.let { it.length == 5 && it.all(Char::isDigit) } == true -> w
                 w.length == 5 && w.all { it.isDigit() } -> w
                 w.any { it.isDigit() } && w.none { it.isLetter() } -> w
                 w.length <= 2 && w.all { it.isLetter() } && w in setOf("NE", "NW", "SE", "SW") -> w

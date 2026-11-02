@@ -6,7 +6,8 @@
 Every label is a SAMPLE for scanner testing: generic layout, made-up recipient names and tracking numbers, a fictional
 return address, no carrier or retailer logos, and a "TEST LABEL" footer.
 """
-import json, os, random, re, sqlite3, sys
+import json, os, random, re, sqlite3, sys, time
+from urllib.parse import parse_qs, urlparse
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -56,7 +57,7 @@ def tracking():
 
 def make_label():
     sid, name, city, zip5 = random.choice(STREETS)
-    num, number = random.choice(db.execute("SELECT num, number FROM addr WHERE street_id=? AND unit='' AND num>0", (sid,)).fetchall())
+    num, number, lat, lon = random.choice(db.execute("SELECT num, number, lat, lon FROM addr WHERE street_id=? AND unit='' AND num>0", (sid,)).fetchall())
     unit = random.choice(["", "", "", "", "", f"APT {random.randint(1, 40)}", f"LOT {random.randint(1, 99)}", f"STE {random.randint(1, 20)}"])
     t = tracking()
     zip4 = f"{random.randint(1, 9999):04d}"
@@ -65,6 +66,7 @@ def make_label():
         "street": f"{number} {labelize(name)}",
         "unit": unit,
         "city": city.upper(), "state": "TN", "zip5": zip5, "zip4": zip4,
+        "lat": lat / 1e6, "lon": lon / 1e6,
         "tracking": t,
         "routeCode": f"R{random.randint(1, 99):03d}",
         "sortCodes": random.sample(["FSD1", "MDW5", "BNA7", "TYS5", "CVG2", "IND9", "HOU3", "SDF8", "ATL6", "MEM1"], 4),
@@ -76,13 +78,34 @@ def make_label():
     }
 
 
+SERVED = {}
+ADVANCE = {"n": 0}
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **k):
         super().__init__(*a, directory=HERE, **k)
 
     def do_GET(self):
+        q = parse_qs(urlparse(self.path).query)
+        if "seed" in q:
+            random.seed(int(q["seed"][0]))  # ?seed=N makes the label reproducible (for the test harness)
+        if self.path.startswith("/api/advance"):      # the page polls /api/cmd and shows a new label when this counter moves
+            ADVANCE["n"] += 1
+        if self.path.startswith("/api/cmd") or self.path.startswith("/api/advance"):
+            body = json.dumps(ADVANCE).encode()
+            self.send_response(200); self.send_header("Content-Type", "application/json"); self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
+            return
+        if self.path.startswith("/api/last"):
+            body = json.dumps(SERVED).encode()
+            self.send_response(200); self.send_header("Content-Type", "application/json"); self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
+            return
         if self.path.startswith("/api/label"):
-            body = json.dumps(make_label()).encode()
+            label = make_label()
+            if "seed" not in q: SERVED.clear(); SERVED.update(label, at=time.time())
+            body = json.dumps(label).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Cache-Control", "no-store")
@@ -93,7 +116,9 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path.split("?")[0] in ("/", "/index.html"):
             # The first label rides along in the page, so it is drawn before anything is fetched.
             page = open(os.path.join(HERE, "index.html"), encoding="utf-8").read()
-            page = page.replace("<script src=\"app.js\">", "<script>window.__first = " + json.dumps(make_label()) + ";</script>\n<script src=\"app.js\">")
+            first = make_label()
+            if "seed" not in q: SERVED.clear(); SERVED.update(first, at=time.time())
+            page = page.replace("<script src=\"app.js\">", "<script>window.__first = " + json.dumps(first) + ";</script>\n<script src=\"app.js\">")
             body = page.encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
