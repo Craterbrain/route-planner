@@ -138,4 +138,13 @@ class LabelParserTest {
     @Test fun aStreetLineWithAFiveDigitNumberAndNoZipIsNotACityLine() {
         assertNull(LabelParser.parse("12345 6789\n8681 HWY 70 E").primary)
     }
+
+    @Test fun tracksTheLineOrderStreetThenCityWhenBothAreAdjacent() {
+        // From a real scan log: ML Kit gave name, CITY line, street line (wrong order), which found nothing at all.
+        // The scanner now orders lines by position itself; the parser still needs street directly above city.
+        val r = LabelParser.parse(listOf(
+            "KIMBERLY BRUBAKER" to 43f, "8681 HIGHWAY 70E" to 43f, "CROSSVILLE TN 38555-6923" to 43f,
+        ).map { LabelParser.OcrLine(it.first, it.second) })
+        assertEquals("8681 Highway 70e, Crossville TN 38555", r.primary!!.address)
+    }
 }

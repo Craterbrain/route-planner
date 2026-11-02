@@ -166,12 +166,33 @@ class ScanActivity : AppCompatActivity() {
             text.process(image)
                 .addOnSuccessListener { t ->
                     // Lines in reading order, each with its printed height (the bigger address is the recipient's).
-                    val lines = t.textBlocks.sortedBy { it.boundingBox?.top ?: 0 }.flatMap { it.lines }
+                    val lines = readingOrder(t.textBlocks.flatMap { it.lines })
                         .map { LabelParser.OcrLine(it.text, (it.boundingBox?.height() ?: 0).toFloat()) }
                     if (lines.isNotEmpty()) runOnUiThread { onLines(lines) }
                 }
                 .addOnCompleteListener { done() }
         }
+    }
+
+    /**
+     * Lines top to bottom, taken one by one rather than block by block: ML Kit's own grouping can put a wider line (the
+     * city line with its ZIP+4) ahead of the street line above it, and then no address is found. Lines that share a row
+     * (a box printed beside an address) go left to right.
+     */
+    private fun readingOrder(lines: List<com.google.mlkit.vision.text.Text.Line>): List<com.google.mlkit.vision.text.Text.Line> {
+        val sorted = lines.filter { it.boundingBox != null }.sortedBy { it.boundingBox!!.centerY() }
+        val out = ArrayList<com.google.mlkit.vision.text.Text.Line>()
+        var row = ArrayList<com.google.mlkit.vision.text.Text.Line>()
+        var rowY = 0f
+        fun flush() { out += row.sortedBy { it.boundingBox!!.left }; row = ArrayList() }
+        for (l in sorted) {
+            val b = l.boundingBox!!
+            if (row.isNotEmpty() && b.centerY() - rowY > b.height() * 0.6f) flush()
+            if (row.isEmpty()) rowY = b.centerY().toFloat()
+            row += l
+        }
+        flush()
+        return out
     }
 
     /** Barcode values from the last [windowMs]. */
