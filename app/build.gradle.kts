@@ -15,21 +15,37 @@ android {
         targetSdk = 35
         // `-Pabis=arm64-v8a` builds for 64-bit phones only (about 30 MB smaller); the default keeps 32-bit ARM too.
         ndk { abiFilters += (project.findProperty("abis") as String? ?: "arm64-v8a,armeabi-v7a").split(",") }
-        versionCode = 27
-        versionName = "0.9.3"
+        versionCode = 28
+        versionName = "1.0.0"
     }
 
-    // One signing identity for every build, kept outside the repo: ~/.config/route-planner/signing/signing.properties
-    // (or the directory named by the RP_SIGNING_DIR environment variable). Without it, builds fall back to the machine's
-    // default debug key and the APK cannot update one signed on another machine.
+    // Debug builds: the machine's long-standing debug identity, kept outside the repo in ~/.config/route-planner/signing/
+    // (or RP_SIGNING_DIR), so development installs keep updating. Without it, the default debug key is used.
     val signingDir = File(System.getenv("RP_SIGNING_DIR") ?: "${System.getProperty("user.home")}/.config/route-planner/signing")
     val signingProps = Properties().apply { File(signingDir, "signing.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) } }
+
+    // Release builds (v1.0 onwards): a separate private key that is NOT the debug key. CI supplies it through
+    // RP_RELEASE_KEYSTORE / RP_RELEASE_STORE_PASSWORD / RP_RELEASE_KEY_ALIAS / RP_RELEASE_KEY_PASSWORD; locally it is read
+    // from ~/.config/route-planner/release-signing/signing.properties (or RP_RELEASE_SIGNING_DIR).
+    val releaseDir = File(System.getenv("RP_RELEASE_SIGNING_DIR") ?: "${System.getProperty("user.home")}/.config/route-planner/release-signing")
+    val releaseProps = Properties().apply { File(releaseDir, "signing.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) } }
+    fun releaseValue(env: String, prop: String): String? = System.getenv(env) ?: releaseProps.getProperty(prop)
+    val releaseStore = System.getenv("RP_RELEASE_KEYSTORE") ?: releaseProps.getProperty("storeFile")?.let { File(releaseDir, it).path }
+    val haveReleaseKey = releaseStore != null && File(releaseStore).exists() &&
+        releaseValue("RP_RELEASE_STORE_PASSWORD", "storePassword") != null && releaseValue("RP_RELEASE_KEY_ALIAS", "keyAlias") != null
+
     signingConfigs {
         if (signingProps.containsKey("storeFile")) create("app") {
             storeFile = File(signingDir, signingProps.getProperty("storeFile"))
             storePassword = signingProps.getProperty("storePassword")
             keyAlias = signingProps.getProperty("keyAlias")
             keyPassword = signingProps.getProperty("keyPassword")
+        }
+        if (haveReleaseKey) create("release") {
+            storeFile = File(releaseStore!!)
+            storePassword = releaseValue("RP_RELEASE_STORE_PASSWORD", "storePassword")
+            keyAlias = releaseValue("RP_RELEASE_KEY_ALIAS", "keyAlias")
+            keyPassword = releaseValue("RP_RELEASE_KEY_PASSWORD", "keyPassword") ?: storePassword
         }
     }
     buildTypes {
@@ -42,7 +58,11 @@ android {
             isMinifyEnabled = project.hasProperty("shrink")
             isShrinkResources = project.hasProperty("shrink")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.findByName("app") ?: signingConfigs.getByName("debug")
+            // Never fall back to a debug key for something that gets published: `-PrequireReleaseKey` (CI) turns a missing
+            // release key into a build error. Without it a local release build is debug-signed, for testing only.
+            signingConfig = signingConfigs.findByName("release")
+                ?: if (project.hasProperty("requireReleaseKey")) throw GradleException("No release signing key found (see app/build.gradle.kts)")
+                else signingConfigs.findByName("app") ?: signingConfigs.getByName("debug")
         }
     }
     compileOptions {

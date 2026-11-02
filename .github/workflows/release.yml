@@ -1,0 +1,68 @@
+name: Release
+
+# Push a tag like v1.0.0 (it must equal "v" + versionName in app/build.gradle.kts) and this builds, signs and publishes
+# the APK as a GitHub release. The release key lives only in repository secrets; this workflow never runs for pull requests.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  # SHA-256 of the release certificate (public). The build fails if the APK is signed with anything else.
+  RELEASE_CERT_SHA256: cba7e778ca5d38e26f7b5d1d409aaa41492f146f541bbf973f6a98a556d2cd90
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Tag must match the app version
+        run: |
+          version=$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts)
+          [ "${GITHUB_REF_NAME}" = "v${version}" ] || { echo "Tag ${GITHUB_REF_NAME} does not match versionName ${version}"; exit 1; }
+          echo "VERSION=${version}" >> "$GITHUB_ENV"
+
+      - name: Restore the release key
+        env:
+          KEYSTORE_B64: ${{ secrets.RP_RELEASE_KEYSTORE_B64 }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+          echo "RP_RELEASE_KEYSTORE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+
+      - name: Test and build the signed release APK
+        env:
+          RP_RELEASE_STORE_PASSWORD: ${{ secrets.RP_RELEASE_STORE_PASSWORD }}
+          RP_RELEASE_KEY_PASSWORD: ${{ secrets.RP_RELEASE_KEY_PASSWORD }}
+          RP_RELEASE_KEY_ALIAS: ${{ secrets.RP_RELEASE_KEY_ALIAS }}
+        run: ./gradlew --no-daemon :core:test :app:assembleRelease -PrequireReleaseKey
+
+      - name: Check the signature
+        run: |
+          apk=app/build/outputs/apk/release/app-release.apk
+          apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$apksigner" verify --print-certs "$apk" | tee certs.txt
+          grep -q "SHA-256 digest: ${RELEASE_CERT_SHA256}" certs.txt || { echo "Signed with an unexpected key"; exit 1; }
+          cp "$apk" "route-planner-${VERSION}.apk"
+          sha256sum "route-planner-${VERSION}.apk" > "route-planner-${VERSION}.apk.sha256"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<NOTES
+          Route Planner ${VERSION}. Install the APK on an Android 8.0+ phone (arm64 or 32-bit ARM).
+
+          Signed with the release key, certificate SHA-256 \`${RELEASE_CERT_SHA256}\`. Check yours with \`apksigner verify --print-certs route-planner-${VERSION}.apk\`.
+
+          After installing, open Settings → Download offline data for roads and addresses. See the README for what is in this version.
+          NOTES
+          gh release create "${GITHUB_REF_NAME}" "route-planner-${VERSION}.apk" "route-planner-${VERSION}.apk.sha256" \
+            --title "Route Planner ${VERSION}" --notes-file notes.md --generate-notes
