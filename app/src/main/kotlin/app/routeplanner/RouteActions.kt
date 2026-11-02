@@ -184,7 +184,13 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
         }
         // A namesake in another state ("14 East Street" in Pennsylvania) turns a 13-minute route into a 31-hour one: ask first.
         val origin = searchBias()
-        if (origin != null && alive && haversine(origin, door) > FAR_STOP_M) {
+        val away = if (origin != null) haversine(origin, door) else 0.0
+        // Once a far area is already on the route (the driver accepted it), more stops in that vicinity, or still within
+        // 70 miles of the start, don't ask again.
+        val farOnRoute = if (origin == null) emptyList() else
+            s0?.stops.orEmpty().filter { it.status == Status.PENDING && haversine(origin, it.target) > FAR_STOP_M }
+        val knownVicinity = farOnRoute.isNotEmpty() && (away <= STILL_OK_M || farOnRoute.any { haversine(it.target, door) <= VICINITY_M })
+        if (origin != null && alive && away > FAR_STOP_M && !knownVicinity) {
             MaterialAlertDialogBuilder(act).setTitle("This stop is far away")
                 .setMessage("${address.substringBefore(',')} is ${formatDistance(haversine(origin, door).toInt(), imperialUnits())} from your start. " +
                     "Is that the right place? Adding the city or ZIP usually finds the nearby one.")
@@ -305,5 +311,9 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
         const val REQ_LOCATION = 2
         /** A new stop farther than this (about 50 miles) from the route start gets a "right place?" question. */
         const val FAR_STOP_M = 80_000.0
+        /** With a far stop already accepted, stops within this (70 miles) of the start no longer ask. */
+        const val STILL_OK_M = 112_654.0
+        /** ...and neither do stops within this (about 25 miles) of an already accepted far stop. */
+        const val VICINITY_M = 40_000.0
     }
 }
