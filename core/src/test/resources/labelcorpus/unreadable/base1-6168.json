@@ -1,0 +1,72 @@
+{
+ "tag": "base1",
+ "seed": 6168,
+ "settings": "warp=0.6&dirt=0.8&soft=0.6&fade=0.8&streak=0.8&feed=0.8&light=0.8",
+ "truth": {
+  "name": "KATHLEEN MURPHY",
+  "street": "86 CASSIE LN",
+  "unit": "LOT 92",
+  "city": "CROSSVILLE",
+  "state": "TN",
+  "zip5": "38571",
+  "zip4": "9601"
+ },
+ "lines": [
+  {
+   "t": "PARCEL SELECT",
+   "l": 578,
+   "tp": 102,
+   "r": 672,
+   "b": 119
+  },
+  {
+   "t": "POSTAGE PAID",
+   "l": 584,
+   "tp": 121,
+   "r": 667,
+   "b": 135
+  },
+  {
+   "t": "SAMPLE",
+   "l": 603,
+   "tp": 141,
+   "r": 647,
+   "b": 153
+  },
+  {
+   "t": "CARRIER- LEAVE IF NO RESPONSE",
+   "l": 220,
+   "tp": 142,
+   "r": 520,
+   "b": 166
+  },
+  {
+   "t": "TEST",
+   "l": 612,
+   "tp": 157,
+   "r": 642,
+   "b": 168
+  },
+  {
+   "t": "PARCEL SELECT",
+   "l": 247,
+   "tp": 195,
+   "r": 516,
+   "b": 238
+  },
+  {
+   "t": "RO04",
+   "l": 411,
+   "tp": 254,
+   "r": 457,
+   "b": 273
+  },
+  {
+   "t": "As6xdrq\u0161M 0 / 1194",
+   "l": 711,
+   "tp": 844,
+   "r": 726,
+   "b": 949
+  }
+ ]
+}

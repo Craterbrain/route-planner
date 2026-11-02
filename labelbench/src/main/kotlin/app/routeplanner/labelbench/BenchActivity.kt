@@ -53,7 +53,8 @@ class BenchActivity : Activity() {
                 useRegion = intent.getStringExtra("region") != "0",
                 threads = intent.getStringExtra("threads")?.toIntOrNull() ?: 3,
                 crop = intent.getStringExtra("crop") == "1",           // read only the label's box, not the whole picture
-                maxDim = intent.getStringExtra("maxdim")?.toIntOrNull() ?: 0)   // downscale the read so its longer side is at most this
+                maxDim = intent.getStringExtra("maxdim")?.toIntOrNull() ?: 0,
+                retry = intent.getStringExtra("retry") == "1")   // downscale the read so its longer side is at most this
             Thread { run(File(base, intent.getStringExtra("dir")!!), opts) {}; runOnUiThread { finish() } }.start()
             return
         }
@@ -161,10 +162,10 @@ class BenchActivity : Activity() {
         try { startActivity(Intent(send).setPackage("app.avs")) } catch (e: ActivityNotFoundException) { startActivity(Intent.createChooser(send, "Send results")) }
     }
 
-    private class Options(val useRegion: Boolean = true, val threads: Int = 3, val crop: Boolean = false, val maxDim: Int = 0) {
-        fun toJson() = JSONObject().put("region", if (useRegion) "1" else "0").put("threads", threads.toString()).put("crop", if (crop) "1" else "0").put("maxdim", maxDim.toString())
+    private class Options(val useRegion: Boolean = true, val threads: Int = 3, val crop: Boolean = false, val maxDim: Int = 0, val retry: Boolean = false) {
+        fun toJson() = JSONObject().put("region", if (useRegion) "1" else "0").put("threads", threads.toString()).put("crop", if (crop) "1" else "0").put("maxdim", maxDim.toString()).put("retry", if (retry) "1" else "0")
         companion object {
-            fun from(j: JSONObject) = Options(j.optString("region", "1") != "0", j.optString("threads", "3").toIntOrNull() ?: 3, j.optString("crop", "0") == "1", j.optString("maxdim", "0").toIntOrNull() ?: 0)
+            fun from(j: JSONObject) = Options(j.optString("region", "1") != "0", j.optString("threads", "3").toIntOrNull() ?: 3, j.optString("crop", "0") == "1", j.optString("maxdim", "0").toIntOrNull() ?: 0, j.optString("retry", "0") == "1")
         }
     }
 
@@ -181,7 +182,7 @@ class BenchActivity : Activity() {
         val writer = out.bufferedWriter()
         val finished = AtomicInteger()
         for (f in files) pool.execute {
-            val line = runCatching { one(f, text, barcodes, o.useRegion, o.crop, o.maxDim) }.getOrElse { JSONObject().put("file", f.name).put("error", it.toString()) }
+            val line = runCatching { one(f, text, barcodes, o.useRegion, o.crop, o.maxDim, o.retry) }.getOrElse { JSONObject().put("file", f.name).put("error", it.toString()) }
             synchronized(writer) { writer.write(line.toString()); writer.newLine() }
             val n = finished.incrementAndGet()
             if (n % 10 == 0 || n == files.size) progress("$n / ${files.size} pictures")
@@ -194,7 +195,17 @@ class BenchActivity : Activity() {
         progress("Done: $summary")
     }
 
-    private fun one(f: File, text: com.google.mlkit.vision.text.TextRecognizer, codes: com.google.mlkit.vision.barcode.BarcodeScanner, useRegion: Boolean, crop: Boolean, maxDim: Int): JSONObject {
+    /** The picture in greys with the contrast pushed up around mid-grey: faded print comes back darker, the paper whiter. */
+    private fun stretch(src: android.graphics.Bitmap): android.graphics.Bitmap {
+        val out = android.graphics.Bitmap.createBitmap(src.width, src.height, android.graphics.Bitmap.Config.ARGB_8888)
+        val m = android.graphics.ColorMatrix().apply { setSaturation(0f) }
+        val k = 1.8f; val b = 128f * (1 - k) - 20f
+        m.postConcat(android.graphics.ColorMatrix(floatArrayOf(k, 0f, 0f, 0f, b, 0f, k, 0f, 0f, b, 0f, 0f, k, 0f, b, 0f, 0f, 0f, 1f, 0f)))
+        android.graphics.Canvas(out).drawBitmap(src, 0f, 0f, android.graphics.Paint().apply { colorFilter = android.graphics.ColorMatrixColorFilter(m) })
+        return out
+    }
+
+    private fun one(f: File, text: com.google.mlkit.vision.text.TextRecognizer, codes: com.google.mlkit.vision.barcode.BarcodeScanner, useRegion: Boolean, crop: Boolean, maxDim: Int, retry: Boolean): JSONObject {
         val t0 = System.nanoTime()
         val bmp = BitmapFactory.decodeFile(f.path) ?: error("can't decode ${f.name}")
         val tDecode = System.nanoTime()
@@ -214,6 +225,7 @@ class BenchActivity : Activity() {
             l = maxOf(0, l - region.cell); t = maxOf(0, t - region.cell); r = minOf(bmp.width, r + region.cell); b = minOf(bmp.height, b + region.cell)
             if (r - l > 64 && b - t > 64) { ox = l; oy = t; readBmp = android.graphics.Bitmap.createBitmap(bmp, l, t, r - l, b - t) }
         }
+        val cropBmp = readBmp
         if (maxDim > 0 && maxOf(readBmp.width, readBmp.height) > maxDim) {
             scale = maxDim.toFloat() / maxOf(readBmp.width, readBmp.height)
             readBmp = android.graphics.Bitmap.createScaledBitmap(readBmp, (readBmp.width * scale).toInt(), (readBmp.height * scale).toInt(), true)
@@ -224,11 +236,26 @@ class BenchActivity : Activity() {
         val t = Tasks.await(textTask); val tText = System.nanoTime()
         val c = Tasks.await(codeTask); val tCode = System.nanoTime()
         // Back to the picture's own coordinates, so the label region and the line order work as before.
-        val raw = t.textBlocks.flatMap { it.lines }
-        val back = { l: com.google.mlkit.vision.text.Text.Line -> l.boundingBox?.let { LabelReading.Box((it.left / scale).toInt() + ox, (it.top / scale).toInt() + oy, (it.right / scale).toInt() + ox, (it.bottom / scale).toInt() + oy) } }
-        val kept = LabelReading.order(LabelReading.inside(raw, region, back), back)
-        val lines = kept.map { LabelParser.OcrLine(it.text, (back(it)?.height ?: 0).toFloat()) }
-        val result = LabelParser.parse(lines)
+        var sc = scale
+        var raw = t.textBlocks.flatMap { it.lines }
+        var back = { l: com.google.mlkit.vision.text.Text.Line -> l.boundingBox?.let { LabelReading.Box((it.left / sc).toInt() + ox, (it.top / sc).toInt() + oy, (it.right / sc).toInt() + ox, (it.bottom / sc).toInt() + oy) } }
+        var kept = LabelReading.order(LabelReading.inside(raw, region, back), back)
+        var lines = kept.map { LabelParser.OcrLine(it.text, (back(it)?.height ?: 0).toFloat()) }
+        var result = LabelParser.parse(lines)
+        // A second look when the first found no delivery address: the label at full resolution with its contrast stretched.
+        var retried = false; var tRetry = 0L
+        if (retry && result.primary.let { it == null || it.isReturn }) {
+            val r0 = System.nanoTime(); retried = true
+            val sharp = stretch(cropBmp)
+            val t2 = Tasks.await(text.process(InputImage.fromBitmap(sharp, 0)))
+            sc = 1f
+            val raw2 = t2.textBlocks.flatMap { it.lines }
+            val kept2 = LabelReading.order(LabelReading.inside(raw2, region, back), back)
+            val lines2 = kept2.map { LabelParser.OcrLine(it.text, (back(it)?.height ?: 0).toFloat()) }
+            val result2 = LabelParser.parse(lines2)
+            if (result2.primary.let { it != null && !it.isReturn }) { raw = raw2; kept = kept2; lines = lines2; result = result2 }
+            tRetry = (System.nanoTime() - r0) / 1_000_000
+        }
         val tEnd = System.nanoTime()
         val ms = { a: Long, b: Long -> (b - a) / 1_000_000 }
         fun boxes(ls: List<com.google.mlkit.vision.text.Text.Line>) = JSONArray(ls.mapNotNull { l -> back(l)?.let { JSONObject().put("t", l.text).put("l", it.left).put("tp", it.top).put("r", it.right).put("b", it.bottom) } })
@@ -237,6 +264,7 @@ class BenchActivity : Activity() {
             .put("ms", ms(t0, tEnd))
             .put("t", JSONObject().put("decode", ms(t0, tDecode)).put("region", ms(tDecode, tRegion)).put("prep", ms(tRegion, tPrep)).put("text", ms(tPrep, tText)).put("barcode", ms(tText, tCode)).put("parse", ms(tCode, tEnd)))
             .put("readPixels", readBmp.width * readBmp.height)
+            .put("retried", retried).put("retryMs", tRetry)
             .put("raw", boxes(raw))
             .put("kept", boxes(kept))
             .put("regionCells", region?.mask?.count { it } ?: JSONObject.NULL)

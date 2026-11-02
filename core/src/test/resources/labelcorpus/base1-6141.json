@@ -1,0 +1,135 @@
+{
+ "tag": "base1",
+ "seed": 6141,
+ "settings": "warp=0.6&dirt=0.8&soft=0.6&fade=0.8&streak=0.8&feed=0.8&light=0.8",
+ "truth": {
+  "name": "DONNA LEWIS",
+  "street": "32 COLOR COURT",
+  "unit": "APT 1",
+  "city": "CROSSVILLE",
+  "state": "TN",
+  "zip5": "38571",
+  "zip4": "9739"
+ },
+ "lines": [
+  {
+   "t": "PARCEL SELECT",
+   "l": 589,
+   "tp": 96,
+   "r": 684,
+   "b": 111
+  },
+  {
+   "t": "POSTAGE PAID",
+   "l": 594,
+   "tp": 114,
+   "r": 679,
+   "b": 130
+  },
+  {
+   "t": "SAMPLE",
+   "l": 613,
+   "tp": 134,
+   "r": 660,
+   "b": 145
+  },
+  {
+   "t": "CARRIER -LEAVE IF NO RESPONSE",
+   "l": 223,
+   "tp": 136,
+   "r": 530,
+   "b": 154
+  },
+  {
+   "t": "ES",
+   "l": 625,
+   "tp": 150,
+   "r": 648,
+   "b": 160
+  },
+  {
+   "t": "PARCEL SELECT",
+   "l": 243,
+   "tp": 185,
+   "r": 532,
+   "b": 229
+  },
+  {
+   "t": "SAMPLE FULFILLMENT CO",
+   "l": 55,
+   "tp": 231,
+   "r": 256,
+   "b": 247
+  },
+  {
+   "t": "4724 SAMPLE WAY",
+   "l": 55,
+   "tp": 250,
+   "r": 195,
+   "b": 265
+  },
+  {
+   "t": "RO73",
+   "l": 409,
+   "tp": 242,
+   "r": 462,
+   "b": 268
+  },
+  {
+   "t": "NASHVILLE TN 37201",
+   "l": 56,
+   "tp": 268,
+   "r": 212,
+   "b": 282
+  },
+  {
+   "t": "ADDRESS SERVICE REQUESTED",
+   "l": 51,
+   "tp": 327,
+   "r": 269,
+   "b": 340
+  },
+  {
+   "t": "DONNA LEWIS",
+   "l": 158,
+   "tp": 354,
+   "r": 301,
+   "b": 374
+  },
+  {
+   "t": "32 COLOR (COURT",
+   "l": 158,
+   "tp": 373,
+   "r": 334,
+   "b": 397
+  },
+  {
+   "t": "APT 1",
+   "l": 158,
+   "tp": 400,
+   "r": 211,
+   "b": 420
+  },
+  {
+   "t": "CROSSVILLE TIN 38571-9739",
+   "l": 158,
+   "tp": 424,
+   "r": 437,
+   "b": 443
+  },
+  {
+   "t": "TRACKING # eVS",
+   "l": 166,
+   "tp": 560,
+   "r": 318,
+   "b": 575
+  },
+  {
+   "t": "9361 8717 9763 0811 4241 51",
+   "l": 211,
+   "tp": 716,
+   "r": 507,
+   "b": 742
+  }
+ ]
+}

@@ -14,5 +14,6 @@ tasks.test {
     inputs.file(cases)
     systemProperty("addressCases", cases.absolutePath)
     // Optional extra replay fixture kept outside the repo: -PaddressFixture=/path/fixture.json.gz
+    (project.findProperty("labelCorpus") as String?)?.let { systemProperty("labelCorpus", it) }
     (project.findProperty("addressFixture") as String?)?.let { systemProperty("addressFixture", it) }
 }

@@ -1,0 +1,135 @@
+{
+ "tag": "base1",
+ "seed": 6114,
+ "settings": "warp=0.6&dirt=0.8&soft=0.6&fade=0.8&streak=0.8&feed=0.8&light=0.8",
+ "truth": {
+  "name": "SUSAN PARKER",
+  "street": "122 BRAMBLETON DR",
+  "unit": "LOT 17",
+  "city": "FAIRFIELD GLADE",
+  "state": "TN",
+  "zip5": "38558",
+  "zip4": "1653"
+ },
+ "lines": [
+  {
+   "t": "PARCEL SELECT",
+   "l": 589,
+   "tp": 107,
+   "r": 682,
+   "b": 119
+  },
+  {
+   "t": "POSTAGE PAID",
+   "l": 594,
+   "tp": 125,
+   "r": 679,
+   "b": 137
+  },
+  {
+   "t": "CARRIER- LEAVE IF NO RESPONSE",
+   "l": 223,
+   "tp": 138,
+   "r": 530,
+   "b": 159
+  },
+  {
+   "t": "SAMPLE",
+   "l": 612,
+   "tp": 143,
+   "r": 657,
+   "b": 153
+  },
+  {
+   "t": "TEST",
+   "l": 621,
+   "tp": 159,
+   "r": 651,
+   "b": 170
+  },
+  {
+   "t": "PARCEL SELECT",
+   "l": 245,
+   "tp": 194,
+   "r": 532,
+   "b": 236
+  },
+  {
+   "t": "SAMPLE FULFILLMENT CO",
+   "l": 53,
+   "tp": 233,
+   "r": 257,
+   "b": 250
+  },
+  {
+   "t": "3789 SAMPLE WAY",
+   "l": 53,
+   "tp": 251,
+   "r": 195,
+   "b": 266
+  },
+  {
+   "t": "RO12|",
+   "l": 421,
+   "tp": 250,
+   "r": 471,
+   "b": 276
+  },
+  {
+   "t": "NASHVILLE TN 37201",
+   "l": 52,
+   "tp": 266,
+   "r": 211,
+   "b": 287
+  },
+  {
+   "t": "ADDRESS SERVICE REQUESTED",
+   "l": 48,
+   "tp": 334,
+   "r": 268,
+   "b": 347
+  },
+  {
+   "t": "SUSAN PARKER",
+   "l": 155,
+   "tp": 362,
+   "r": 318,
+   "b": 381
+  },
+  {
+   "t": "122 BRAMBLETON DR",
+   "l": 156,
+   "tp": 384,
+   "r": 376,
+   "b": 403
+  },
+  {
+   "t": "LOT 17",
+   "l": 156,
+   "tp": 406,
+   "r": 223,
+   "b": 425
+  },
+  {
+   "t": "FAIRFIEI D GL ADF TN 3855R-1653",
+   "l": 163,
+   "tp": 427,
+   "r": 490,
+   "b": 449
+  },
+  {
+   "t": "TRACKING #eVS",
+   "l": 165,
+   "tp": 563,
+   "r": 316,
+   "b": 579
+  },
+  {
+   "t": "9361 8430 7942 8356 8474 B45",
+   "l": 209,
+   "tp": 722,
+   "r": 508,
+   "b": 743
+  }
+ ]
+}

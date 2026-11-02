@@ -1,0 +1,107 @@
+{
+ "tag": "base1",
+ "seed": 6072,
+ "settings": "warp=0.6&dirt=0.8&soft=0.6&fade=0.8&streak=0.8&feed=0.8&light=0.8",
+ "truth": {
+  "name": "AMY MORALES",
+  "street": "4038 DESOTO DR",
+  "unit": "APT 39",
+  "city": "CROSSVILLE",
+  "state": "TN",
+  "zip5": "38572",
+  "zip4": "2782"
+ },
+ "lines": [
+  {
+   "t": "PARCEL SELECT",
+   "l": 578,
+   "tp": 106,
+   "r": 672,
+   "b": 121
+  },
+  {
+   "t": "POSTAGE PAID",
+   "l": 583,
+   "tp": 127,
+   "r": 670,
+   "b": 138
+  },
+  {
+   "t": "SAMPLE",
+   "l": 601,
+   "tp": 144,
+   "r": 649,
+   "b": 156
+  },
+  {
+   "t": "CARRIER - LEAVE IF NO RESPONSE",
+   "l": 221,
+   "tp": 147,
+   "r": 521,
+   "b": 164
+  },
+  {
+   "t": "TEST",
+   "l": 612,
+   "tp": 162,
+   "r": 642,
+   "b": 171
+  },
+  {
+   "t": "SAMPLE FULFILLMENT CO",
+   "l": 54,
+   "tp": 240,
+   "r": 252,
+   "b": 255
+  },
+  {
+   "t": "7012 SAMPLE WAY",
+   "l": 54,
+   "tp": 259,
+   "r": 192,
+   "b": 274
+  },
+  {
+   "t": "RO95",
+   "l": 408,
+   "tp": 257,
+   "r": 454,
+   "b": 276
+  },
+  {
+   "t": "NASHVILLE TN 37201",
+   "l": 54,
+   "tp": 275,
+   "r": 209,
+   "b": 291
+  },
+  {
+   "t": "ADDRESS SERVICE REQUESTED",
+   "l": 48,
+   "tp": 337,
+   "r": 262,
+   "b": 351
+  },
+  {
+   "t": "AMY MORALES",
+   "l": 152,
+   "tp": 361,
+   "r": 300,
+   "b": 384
+  },
+  {
+   "t": "4038 DESOTO DIR",
+   "l": 153,
+   "tp": 386,
+   "r": 320,
+   "b": 404
+  },
+  {
+   "t": "APT 39",
+   "l": 152,
+   "tp": 408,
+   "r": 220,
+   "b": 426
+  }
+ ]
+}

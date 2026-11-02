@@ -1,0 +1,79 @@
+{
+ "tag": "base1",
+ "seed": 6107,
+ "settings": "warp=0.6&dirt=0.8&soft=0.6&fade=0.8&streak=0.8&feed=0.8&light=0.8",
+ "truth": {
+  "name": "SARAH HERNANDEZ",
+  "street": "3240 HIGHWAY 70 NORTH",
+  "unit": "",
+  "city": "CROSSVILLE",
+  "state": "TN",
+  "zip5": "38555",
+  "zip4": "6430"
+ },
+ "lines": [
+  {
+   "t": "PARCEL SELECT",
+   "l": 220,
+   "tp": 201,
+   "r": 520,
+   "b": 235
+  },
+  {
+   "t": "1178 SAMPLE WAY",
+   "l": 49,
+   "tp": 257,
+   "r": 189,
+   "b": 279
+  },
+  {
+   "t": "RO86",
+   "l": 412,
+   "tp": 260,
+   "r": 459,
+   "b": 281
+  },
+  {
+   "t": "NASHVILLE TN 37201",
+   "l": 50,
+   "tp": 283,
+   "r": 208,
+   "b": 298
+  },
+  {
+   "t": "ADDRESS SERVICE REQUESTED",
+   "l": 45,
+   "tp": 344,
+   "r": 266,
+   "b": 354
+  },
+  {
+   "t": "SARAH HERNANDEZ",
+   "l": 154,
+   "tp": 368,
+   "r": 360,
+   "b": 384
+  },
+  {
+   "t": "3240 HIGHWAY 70 NORTH",
+   "l": 154,
+   "tp": 388,
+   "r": 407,
+   "b": 407
+  },
+  {
+   "t": "CROSSVILLE TIN 38555-6430",
+   "l": 154,
+   "tp": 410,
+   "r": 435,
+   "b": 429
+  },
+  {
+   "t": "TRACKING # eVS",
+   "l": 163,
+   "tp": 567,
+   "r": 315,
+   "b": 584
+  }
+ ]
+}

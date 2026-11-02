@@ -1,0 +1,107 @@
+{
+ "tag": "base1",
+ "seed": 6229,
+ "settings": "warp=0.6&dirt=0.8&soft=0.6&fade=0.8&streak=0.8&feed=0.8&light=0.8",
+ "truth": {
+  "name": "TIMOTHY MORALES",
+  "street": "1010 OSWEGO CIR",
+  "unit": "",
+  "city": "CROSSVILLE",
+  "state": "TN",
+  "zip5": "38572",
+  "zip4": "1507"
+ },
+ "lines": [
+  {
+   "t": "PARCEL SELECT",
+   "l": 589,
+   "tp": 102,
+   "r": 682,
+   "b": 118
+  },
+  {
+   "t": "POSTAGE PAID",
+   "l": 594,
+   "tp": 122,
+   "r": 680,
+   "b": 137
+  },
+  {
+   "t": "CARRIER- LEAVE IF NO RESPONSE",
+   "l": 236,
+   "tp": 132,
+   "r": 531,
+   "b": 158
+  },
+  {
+   "t": "SAMPLE",
+   "l": 613,
+   "tp": 141,
+   "r": 659,
+   "b": 154
+  },
+  {
+   "t": "TEST",
+   "l": 622,
+   "tp": 158,
+   "r": 651,
+   "b": 170
+  },
+  {
+   "t": "PARCEL SELECT",
+   "l": 241,
+   "tp": 188,
+   "r": 527,
+   "b": 231
+  },
+  {
+   "t": "SAMPLE FJLFILLMENT CO",
+   "l": 53,
+   "tp": 221,
+   "r": 255,
+   "b": 243
+  },
+  {
+   "t": "5753 SAMPLE WAY",
+   "l": 53,
+   "tp": 244,
+   "r": 195,
+   "b": 260
+  },
+  {
+   "t": "R010|",
+   "l": 424,
+   "tp": 248,
+   "r": 470,
+   "b": 272
+  },
+  {
+   "t": "NASHVILLE TN 37201",
+   "l": 53,
+   "tp": 260,
+   "r": 210,
+   "b": 279
+  },
+  {
+   "t": "ADDRESS SERVICE REQUE\u0160TED",
+   "l": 46,
+   "tp": 320,
+   "r": 266,
+   "b": 338
+  },
+  {
+   "t": "TIMOTHY MORALES",
+   "l": 153,
+   "tp": 349,
+   "r": 352,
+   "b": 371
+  },
+  {
+   "t": "CROSSVILLE TN 38572-1507",
+   "l": 151,
+   "tp": 393,
+   "r": 433,
+   "b": 418
+  }
+ ]
+}

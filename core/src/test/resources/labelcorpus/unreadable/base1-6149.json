@@ -1,0 +1,142 @@
+{
+ "tag": "base1",
+ "seed": 6149,
+ "settings": "warp=0.6&dirt=0.8&soft=0.6&fade=0.8&streak=0.8&feed=0.8&light=0.8",
+ "truth": {
+  "name": "MICHAEL EVANS",
+  "street": "83 STONE CIR",
+  "unit": "",
+  "city": "CROSSVILLE",
+  "state": "TN",
+  "zip5": "38555",
+  "zip4": "4107"
+ },
+ "lines": [
+  {
+   "t": "PARCEL SELECT",
+   "l": 578,
+   "tp": 90,
+   "r": 672,
+   "b": 113
+  },
+  {
+   "t": "ncTAGE PAID",
+   "l": 589,
+   "tp": 108,
+   "r": 670,
+   "b": 129
+  },
+  {
+   "t": "POSTAGE PA",
+   "l": 585,
+   "tp": 121,
+   "r": 660,
+   "b": 137
+  },
+  {
+   "t": "SAN",
+   "l": 603,
+   "tp": 135,
+   "r": 626,
+   "b": 147
+  },
+  {
+   "t": "CARRIER- LEAVE IF NO RESPONSE.",
+   "l": 216,
+   "tp": 135,
+   "r": 520,
+   "b": 161
+  },
+  {
+   "t": "rEeT",
+   "l": 608,
+   "tp": 144,
+   "r": 648,
+   "b": 158
+  },
+  {
+   "t": "PARCEL SELECT",
+   "l": 233,
+   "tp": 192,
+   "r": 512,
+   "b": 239
+  },
+  {
+   "t": "SAMPLE FULIFILLIMENT CO",
+   "l": 45,
+   "tp": 239,
+   "r": 246,
+   "b": 258
+  },
+  {
+   "t": "3927 SAMPLE WAY",
+   "l": 45,
+   "tp": 258,
+   "r": 186,
+   "b": 277
+  },
+  {
+   "t": "RO80",
+   "l": 409,
+   "tp": 255,
+   "r": 456,
+   "b": 274
+  },
+  {
+   "t": "NASHVILLE TV 37201",
+   "l": 46,
+   "tp": 277,
+   "r": 204,
+   "b": 294
+  },
+  {
+   "t": "ADDRESS SERVICE REQUESTED",
+   "l": 44,
+   "tp": 336,
+   "r": 262,
+   "b": 353
+  },
+  {
+   "t": "LMiCUAEL EVANC",
+   "l": 156,
+   "tp": 364,
+   "r": 317,
+   "b": 383
+  },
+  {
+   "t": "33 STONE: CIR",
+   "l": 156,
+   "tp": 385,
+   "r": 291,
+   "b": 409
+  },
+  {
+   "t": "CROSSVILLE TN 38555-41 07",
+   "l": 157,
+   "tp": 401,
+   "r": 434,
+   "b": 434
+  },
+  {
+   "t": "TRACKING # eVS",
+   "l": 164,
+   "tp": 568,
+   "r": 317,
+   "b": 586
+  },
+  {
+   "t": "H2bvwZA9 O/ 5893",
+   "l": 708,
+   "tp": 837,
+   "r": 720,
+   "b": 944
+  },
+  {
+   "t": "TEST LAREL- NOT FOR SHIPPING",
+   "l": 489,
+   "tp": 1060,
+   "r": 660,
+   "b": 1078
+  }
+ ]
+}

@@ -45,8 +45,24 @@ object LabelParser {
     // ZIP+4 may be written with a hyphen, en dash or em dash, with or without spaces around it.
     // Whatever follows the five-digit ZIP on that line (the "-6923" extension, or OCR's idea of it: a dropped, mangled or
     // misread dash and digits, stray marks) is ignored, and removed from the address handed to the geocoder.
-    private val CITY_LINE = Regex("""^(.*?[A-Za-z].*?)[,\s]+([A-Za-z]{2})\s+([0-9${'$'}SsOoIlB]{5})(?:[0-9]{4}(?![0-9])|(?![0-9]))[^\n]{0,16}$""")
+    private val CITY_LINE = Regex("""^(.*?[A-Za-z].*?)[,\s]+([A-Za-z]{1,3})\s+([0-9${'$'}SsOoIlB]{5})(?:[0-9]{4}(?![0-9])|(?![0-9]))[^\n]{0,16}$""")
+    // "CROSSVILL, 38571-2850": the state was lost; the ZIP alone (five clean digits) is enough to find the town.
+    private val CITY_ZIP_ONLY = Regex("""^([A-Za-z][A-Za-z .'-]*[A-Za-z]{3})[,\s]+(\d{5})(?:-?\d{4})?(?!\d)[^\n]{0,10}$""")
+    // "CROSSVILLE T," / "TN 38571-2524": the city line broken in two with a stray letter left on the first half.
+    private val CITY_STUB = Regex("""^([A-Za-z][A-Za-z .'-]*?[A-Za-z])[,.]?(?:\s+[A-Za-z][,.]?)?$""")
+    private val ZIP_ONLY_LINE = Regex("""^\d{5}(?:\s?[-–—]\s?\d{4})?$""")
+    private val STATE_ZIP_HEAD = Regex("""^[A-Za-z]{2}\s+\d{5}.*$""")
     private val ENDORSEMENT = Regex("""SERVICE\s+REQUESTED|ADDRESS\s+CORRECTION|FORWARDING""", RegexOption.IGNORE_CASE)
+    private const val ENDORSEMENT_TEXT = "SERVICEREQUESTED"
+    /** "ADDRESS SERVICE REQUESTED", also as OCR garbles it ("ADDRESS GERVICE REQL ESTED"): the letters hold the phrase to within three edits. */
+    private fun isEndorsement(t: String): Boolean {
+        if (ENDORSEMENT.containsMatchIn(t)) return true
+        val l = t.uppercase().filter { it.isLetter() }
+        if (l.length < 13) return false
+        val n = ENDORSEMENT_TEXT.length
+        for (w in (n - 2)..(n + 2)) for (i in 0..(l.length - w)) if (editDistance(ENDORSEMENT_TEXT, l.substring(i, i + w)) <= 3) return true
+        return false
+    }
     private val STATE_TAIL = Regex("""^.*[A-Za-z].*[,\s]([A-Za-z]{2})$""")
     private val ZIP_HEAD = Regex("""^\d{5}(?:\d{4}(?!\d)|(?!\d))[^\n]{0,16}$""")
     private val RETURN_ENDORSEMENT = Regex("""RETURN\s+SERVICE""", RegexOption.IGNORE_CASE)
@@ -66,6 +82,11 @@ object LabelParser {
         for (l in cleaned) {
             val prev = lines.lastOrNull()
             if (prev != null && STATE_TAIL.matches(prev.text) && ZIP_HEAD.matches(l.text)) lines[lines.size - 1] = OcrLine(prev.text + " " + l.text, (prev.height + l.height) / 2f)
+            else if (prev != null && (STATE_ZIP_HEAD.matches(l.text) && fixState(l.text.substringBefore(' ')) != null || ZIP_ONLY_LINE.matches(l.text)) &&
+                !STREET_LINE.matches(prev.text) && CITY_STUB.matches(prev.text) && prev.text.none { it.isDigit() } && prev.text.trim(',', ' ', '.').split(' ').size <= 4) {
+                val m = CITY_STUB.matchEntire(prev.text)!!
+                lines[lines.size - 1] = OcrLine(m.groupValues[1] + " " + l.text, (prev.height + l.height) / 2f)
+            }
             else lines += l
         }
         val found = ArrayList<Candidate>()
@@ -104,7 +125,11 @@ object LabelParser {
     }
 
     // A stray mark or letter read from a neighbouring barcode / box edge glued in front of the house number ("E 17 KILLEARN CT").
-    private val LEADING_JUNK = Regex("""^[^A-Za-z0-9#]*[A-Za-z|\[\]]\s+(?=\d+[A-Za-z]?\s+[A-Za-z])""")
+    private val LEADING_JUNK = Regex("""^[^A-Za-z0-9#]*(?:[A-Za-z|\[\]]|[A-Za-z]{1,2}:)\s+(?=\d+[A-Za-z]?\s+[A-Za-z])""")
+    // Marks inside the house number ("1(043", "292:") and bracket marks in the street ("(COURT"); a mark between ZIP digits ("38!571").
+    private val NUMBER_MARK = Regex("""^(\d+)[(\[{|!:;.,'`]+(\d+)(?=\s)""")
+    private val NUMBER_TAIL = Regex("""^(\d+)[:;.,'`]+(?=\s)""")
+    private val ZIP_MARK = Regex("""(?<=\d)[!|'`](?=\d)""")
     private val LETTERISH = Regex("""^[A-Za-z01]+$""")
 
     /**
@@ -113,7 +138,8 @@ object LabelParser {
      * ("10TH", "1ST") are left alone.
      */
     private fun clean(raw: String): String {
-        var t = raw.replace(Regex("""\s+"""), " ").trim().replace(LEADING_JUNK, "")
+        var t = raw.replace(Regex("""\s+"""), " ").trim().replace(LEADING_JUNK, "").replace(NUMBER_MARK, "$1$2").replace(NUMBER_TAIL, "$1").replace(ZIP_MARK, "")
+        if (t.firstOrNull()?.isDigit() == true) t = t.replace(Regex("""[(){}\[\]]"""), "").replace(Regex("""(?<=[A-Za-z])[:;]"""), "")
         if (t.none { it.isLetter() }) return t
         t = t.split(' ').withIndex().joinToString(" ") { (i, w) ->
             val letters = w.count { it.isLetter() }
@@ -133,7 +159,7 @@ object LabelParser {
     /** The line right above the street line when it reads like a name (two to four words, letters only). */
     private fun nameAbove(lines: List<OcrLine>, at: Int): String? {
         val t = lines.getOrNull(at - 1)?.text ?: return null
-        if (!NAME_LINE.matches(t) || ENDORSEMENT.containsMatchIn(t) || RETURN_CUE.containsMatchIn(t) || DELIVER_CUE.containsMatchIn(t)) return null
+        if (!NAME_LINE.matches(t) || isEndorsement(t) || RETURN_CUE.containsMatchIn(t) || DELIVER_CUE.containsMatchIn(t)) return null
         return if (t.any { it.isLowerCase() }) t else t.split(' ').joinToString(" ") { it.lowercase().replaceFirstChar { c -> c.uppercase() } }
     }
 
@@ -144,7 +170,7 @@ object LabelParser {
             // A line that is itself an address (or the previous address's city line) ends the search.
             if (k < at && (cityParts(t) != null)) break
             // "ADDRESS SERVICE REQUESTED" is printed between the return block and the recipient's: what follows it is the recipient.
-            if (ENDORSEMENT.containsMatchIn(t)) { if (k < at && !RETURN_ENDORSEMENT.containsMatchIn(t)) return Role.DELIVERY; continue }
+            if (isEndorsement(t)) { if (k < at && !RETURN_ENDORSEMENT.containsMatchIn(t)) return Role.DELIVERY; continue }
             if (RETURN_CUE.containsMatchIn(t)) return Role.RETURN
             if (DELIVER_CUE.containsMatchIn(t)) return Role.DELIVERY
         }
@@ -152,7 +178,7 @@ object LabelParser {
         for (k in at + 1..minOf(lines.size - 1, at + 5)) {
             val t = lines[k].text
             if (STREET_LINE.matches(t) || cityParts(t) != null && k > at + 2) break
-            if (ENDORSEMENT.containsMatchIn(t) && !RETURN_ENDORSEMENT.containsMatchIn(t)) return Role.RETURN
+            if (isEndorsement(t) && !RETURN_ENDORSEMENT.containsMatchIn(t)) return Role.RETURN
         }
         return Role.UNKNOWN
     }
@@ -186,15 +212,35 @@ object LabelParser {
 
     /** (city, state+zip) when [line] ends in "ST 12345" with a real state code. */
     private fun cityParts(line: String): Pair<String, String>? {
+        if (!line.first().isDigit()) CITY_ZIP_ONLY.matchEntire(line)?.let { if (CITY_LINE.matchEntire(line)?.let { m -> fixState(m.groupValues[2]) } == null) return it.groupValues[1].trim() to it.groupValues[2] }
         val m = CITY_LINE.matchEntire(line) ?: return null
-        val st = m.groupValues[2].uppercase()
-        if (st !in STATES) return null
+        val st = fixState(m.groupValues[2]) ?: return null
         // OCR can misread a digit of the ZIP ("$8555"): letters that look like digits are mapped back, and a ZIP that is still
         // not five digits is dropped (the city and state remain). At least three real digits are needed to call it a ZIP at all.
         val raw = m.groupValues[3]
         if (raw.count { it.isDigit() } < 3) return null
         val zip = raw.map { c -> when (c) { 'O', 'o' -> '0'; 'I', 'l' -> '1'; 'S', 's' -> '5'; 'B' -> '8'; else -> c } }.joinToString("")
         return m.groupValues[1].trim() to (if (zip.all { it.isDigit() }) "$st $zip" else st)
+    }
+
+    /**
+     * A state code as printed, or as OCR garbled it: "TIN" and "TII" for TN. A token that is not a state is accepted only when
+     * exactly one state is one edit away and shares its first letter (the first letter is the one that survives).
+     */
+    private fun fixState(tok: String): String? {
+        val t = tok.replace(Regex("[Il1|]{2}"), "N").uppercase()
+        if (t in STATES) return t
+        if (t.length !in 2..3) return null
+        val near = STATES.filter { it[0] == t[0] && editDistance(it, t) == 1 }
+        return near.singleOrNull()
+    }
+
+    private fun editDistance(a: String, b: String): Int {
+        val d = Array(a.length + 1) { IntArray(b.length + 1) }
+        for (i in 0..a.length) d[i][0] = i
+        for (j in 0..b.length) d[0][j] = j
+        for (i in 1..a.length) for (j in 1..b.length) d[i][j] = minOf(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + if (a[i - 1] == b[j - 1]) 0 else 1)
+        return d[a.length][b.length]
     }
 
     /** ALL-CAPS labels become Title Case; the state code and unit designators stay upper-case. */

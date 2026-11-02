@@ -1,0 +1,72 @@
+{
+ "tag": "base1",
+ "seed": 6145,
+ "settings": "warp=0.6&dirt=0.8&soft=0.6&fade=0.8&streak=0.8&feed=0.8&light=0.8",
+ "truth": {
+  "name": "THOMAS TAYLOR",
+  "street": "3117 OPALOCHEE DR",
+  "unit": "",
+  "city": "CROSSVILLE",
+  "state": "TN",
+  "zip5": "38572",
+  "zip4": "0907"
+ },
+ "lines": [
+  {
+   "t": "PARCEL SILECT",
+   "l": 585,
+   "tp": 95,
+   "r": 681,
+   "b": 113
+  },
+  {
+   "t": "POSTAGE PAID",
+   "l": 591,
+   "tp": 119,
+   "r": 679,
+   "b": 132
+  },
+  {
+   "t": "SAMPLE",
+   "l": 609,
+   "tp": 137,
+   "r": 652,
+   "b": 148
+  },
+  {
+   "t": "TEST",
+   "l": 618,
+   "tp": 155,
+   "r": 647,
+   "b": 169
+  },
+  {
+   "t": "\"819 8623 6349 1483 81",
+   "l": 264,
+   "tp": 717,
+   "r": 494,
+   "b": 741
+  },
+  {
+   "t": "G2",
+   "l": 275,
+   "tp": 973,
+   "r": 316,
+   "b": 1005
+  },
+  {
+   "t": "D01",
+   "l": 272,
+   "tp": 1045,
+   "r": 294,
+   "b": 1067
+  },
+  {
+   "t": "TEST LABEL- NOT FOR SHIPPIN 3",
+   "l": 462,
+   "tp": 1076,
+   "r": 638,
+   "b": 1093
+  }
+ ]
+}

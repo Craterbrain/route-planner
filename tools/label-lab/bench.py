@@ -19,10 +19,11 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--labels", type=int, default=250); ap.add_argument("--seed0", type=int, default=5000)
 for k, d in [("warp", "0.6"), ("dirt", "0.8"), ("soft", "0.6"), ("fade", "0.8"), ("streak", "0.8"), ("feed", "0.8"), ("light", "0.8")]: ap.add_argument(f"--{k}", default=d)
 ap.add_argument("--region", default="1"); ap.add_argument("--threads", default="3")
-ap.add_argument("--crop", default="0"); ap.add_argument("--maxdim", default="0")
+ap.add_argument("--retry", default="0"); ap.add_argument("--crop", default="0"); ap.add_argument("--maxdim", default="0")
 ap.add_argument("--send", action="store_true", help="no cable: zip the labels and avs send them; open the bench app on the phone, pick the zip, and it sends results back")
 ap.add_argument("--net", action="store_true", help="queue the labels on the job server (benchserver.py) for the phone's Label bench app to fetch over Wi-Fi, wait, and score the results")
 ap.add_argument("--score", metavar="ZIP", help="score a results zip the bench app sent back (use 'latest' for the newest in the AVS inbox)")
+ap.add_argument("--dump-all", metavar="DIR", help="write every label (recognizer lines + true address) as a fixture into DIR, for ./gradlew :core:test -PlabelCorpus=DIR (parser pass rate, no phone)")
 ap.add_argument("--save-failures", metavar="TAG"); ap.add_argument("--cache", default=os.path.join(tempfile.gettempdir(), "label-bench-cache"))
 a = ap.parse_args()
 
@@ -56,14 +57,14 @@ if a.send or a.net:
     import zipfile
     zp = os.path.join(a.cache, f"bench-{a.seed0}-{a.labels}-c{a.crop}-m{a.maxdim}.zip")
     with zipfile.ZipFile(zp, "w", zipfile.ZIP_STORED) as z:
-        z.writestr("options.json", json.dumps({"region": a.region, "threads": a.threads, "crop": a.crop, "maxdim": a.maxdim}))
+        z.writestr("options.json", json.dumps({"region": a.region, "threads": a.threads, "crop": a.crop, "maxdim": a.maxdim, "retry": a.retry}))
         for s in seeds: z.write(os.path.join(folder, f"label{s}.png"), f"label{s}.png")
     if a.net:
         import socket, shutil
         try: socket.create_connection(("127.0.0.1", 8799), 1).close()
         except OSError:
             subprocess.Popen([sys.executable, os.path.join(HERE, "benchserver.py")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True); time.sleep(1)
-        net = os.path.join(tempfile.gettempdir(), "label-bench-net"); jid = f"{int(time.time())}-{a.seed0}-{a.labels}-c{a.crop}-m{a.maxdim}"
+        net = os.path.join(tempfile.gettempdir(), "label-bench-net"); jid = f"{int(time.time())}-{a.seed0}-{a.labels}-c{a.crop}-m{a.maxdim}-r{a.retry}"
         shutil.copy(zp, os.path.join(net, "queue", jid + ".zip")); res = os.path.join(net, "results", jid + ".zip"); t = time.time()
         print(f"queued {jid}; waiting for the phone (Label bench open and listening)...", flush=True)
         while not os.path.exists(res):
@@ -144,3 +145,11 @@ if a.save_failures:
                    "truth": {k: truth[k] for k in ("name", "street", "unit", "city", "state", "zip5", "zip4")},
                    "lines": r["kept"]}, open(os.path.join(d, f"{a.save_failures}-{s}.json"), "w"), indent=1)
     print(f"saved failure fixtures to core/src/test/resources/labelcorpus/")
+if a.dump_all:
+    os.makedirs(a.dump_all, exist_ok=True)
+    for s in seeds:
+        r = rows.get(f"label{s}.png")
+        if not r or "kept" not in r: continue
+        truth = json.load(urllib.request.urlopen(f"http://localhost:8765/api/label?seed={s}"))
+        json.dump({"seed": s, "truth": {k: truth[k] for k in ("name", "street", "unit", "city", "state", "zip5", "zip4")}, "lines": r["kept"]}, open(os.path.join(a.dump_all, f"{s}.json"), "w"))
+    print(f"dumped {len(seeds)} labels to {a.dump_all}")

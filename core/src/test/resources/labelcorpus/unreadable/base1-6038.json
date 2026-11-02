@@ -1,0 +1,72 @@
+{
+ "tag": "base1",
+ "seed": 6038,
+ "settings": "warp=0.6&dirt=0.8&soft=0.6&fade=0.8&streak=0.8&feed=0.8&light=0.8",
+ "truth": {
+  "name": "JENNIFER ORTIZ",
+  "street": "11 EXPERIMENT STATION RD",
+  "unit": "STE 17",
+  "city": "CROSSVILLE",
+  "state": "TN",
+  "zip5": "38571",
+  "zip4": "6090"
+ },
+ "lines": [
+  {
+   "t": "TEST",
+   "l": 626,
+   "tp": 170,
+   "r": 656,
+   "b": 182
+  },
+  {
+   "t": "9361 7047 5652 2729 2655 03",
+   "l": 201,
+   "tp": 717,
+   "r": 502,
+   "b": 746
+  },
+  {
+   "t": "SLTO J0 X\u00c1AJPDUH",
+   "l": 40,
+   "tp": 819,
+   "r": 56,
+   "b": 932
+  },
+  {
+   "t": "AKRGdCVx O/0275",
+   "l": 693,
+   "tp": 853,
+   "r": 707,
+   "b": 961
+  },
+  {
+   "t": "MDW5",
+   "l": 224,
+   "tp": 977,
+   "r": 324,
+   "b": 1011
+  },
+  {
+   "t": "D 001",
+   "l": 194,
+   "tp": 1013,
+   "r": 266,
+   "b": 1045
+  },
+  {
+   "t": "B 001",
+   "l": 213,
+   "tp": 1047,
+   "r": 295,
+   "b": 1078
+  },
+  {
+   "t": "TEST LABEL- NOT FOR SHIPPING",
+   "l": 464,
+   "tp": 1078,
+   "r": 640,
+   "b": 1097
+  }
+ ]
+}
