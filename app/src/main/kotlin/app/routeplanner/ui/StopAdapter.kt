@@ -38,6 +38,7 @@ class StopAdapter(private val ctx: Context, private val host: RouteHost) : Recyc
         val meta: String,
         val metaIsWarning: Boolean,
         val time: String,
+        val pkgs: Int = 0,
     )
 
     private var rows: MutableList<Row> = mutableListOf()
@@ -77,6 +78,7 @@ class StopAdapter(private val ctx: Context, private val host: RouteHost) : Recyc
         val line2: TextView,
         val meta: TextView,
         val idBadge: TextView,
+        val pkgBadge: TextView,
         val time: TextView,
         val handle: ImageView,
     ) : RecyclerView.ViewHolder(root)
@@ -97,26 +99,22 @@ class StopAdapter(private val ctx: Context, private val host: RouteHost) : Recyc
         }
         val badge = TextView(c).apply {
             gravity = Gravity.CENTER
-            textSize = 14f
+            textSize = 18f
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         }
-        root.addView(badge, LinearLayout.LayoutParams(c.dp(34), c.dp(34)).apply { marginEnd = c.dp(12) })
+        root.addView(badge, LinearLayout.LayoutParams(c.dp(44), c.dp(44)).apply { marginEnd = c.dp(12) })
         val texts = c.vertical()
         val line1 = c.label(16f, bold = true, lines = 1)
         val line2 = c.label(13f, M.attr.colorOnSurfaceVariant, lines = 1)
         val meta = c.label(12f, M.attr.colorOnSurfaceVariant, lines = 2)
         // The address ID as a badge (tertiary container on its on-color: strong contrast in light and dark), beside the details.
-        val idBadge = TextView(c).apply {
-            textSize = 12f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setTextColor(c.color(M.attr.colorOnTertiaryContainer))
-            background = c.roundRect(M.attr.colorTertiaryContainer, 10)
-            setPadding(c.dp(8), c.dp(2), c.dp(8), c.dp(2))
-        }
-        val metaRow = c.horizontal(Gravity.TOP)
-        metaRow.addView(idBadge, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = c.dp(8); topMargin = c.dp(2) })
-        metaRow.addWeighted(meta)
-        texts.addView(line1); texts.addView(line2); texts.addView(metaRow)
+        val idBadge = c.chip(M.attr.colorTertiaryContainer, M.attr.colorOnTertiaryContainer, 15f)
+        // Package count as its own chip, in the same weight: ID and "how many to grab" are what a courier looks for first.
+        val pkgBadge = c.chip(M.attr.colorSecondaryContainer, M.attr.colorOnSecondaryContainer, 15f)
+        val metaRow = c.horizontal(Gravity.CENTER_VERTICAL)
+        metaRow.addView(idBadge, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = c.dp(8); topMargin = c.dp(4) })
+        metaRow.addView(pkgBadge, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = c.dp(4) })
+        texts.addView(line1); texts.addView(line2); texts.addView(metaRow); texts.addView(meta)
         root.addWeighted(texts)
         val time = c.label(13f, M.attr.colorOnSurfaceVariant).apply { gravity = Gravity.END }
         root.addView(time, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = c.dp(8) })
@@ -127,7 +125,7 @@ class StopAdapter(private val ctx: Context, private val host: RouteHost) : Recyc
             setPadding(c.dp(10), c.dp(10), c.dp(10), c.dp(10))
         }
         root.addView(handle, LinearLayout.LayoutParams(c.dp(44), c.dp(44)))
-        val h = Holder(root, badge, line1, line2, meta, idBadge, time, handle)
+        val h = Holder(root, badge, line1, line2, meta, idBadge, pkgBadge, time, handle)
         handle.setOnTouchListener { _, e ->
             if (e.actionMasked == MotionEvent.ACTION_DOWN) touchHelper.startDrag(h)
             false
@@ -149,6 +147,8 @@ class StopAdapter(private val ctx: Context, private val host: RouteHost) : Recyc
         h.meta.visibility = if (r.meta.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE
         h.meta.setTextColor(ctx.color(if (r.metaIsWarning) M.attr.colorError else M.attr.colorOnSurfaceVariant))
         h.idBadge.text = "ID ${s.entryNo}"
+        h.pkgBadge.text = totalPackages(r.pkgs)
+        h.pkgBadge.visibility = if (r.pkgs > 0) android.view.View.VISIBLE else android.view.View.GONE
         h.time.text = r.time
         val finished = s.status != Status.PENDING
         h.root.alpha = if (finished) 0.6f else 1f
