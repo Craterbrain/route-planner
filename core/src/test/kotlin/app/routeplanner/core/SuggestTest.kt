@@ -164,6 +164,29 @@ class SuggestTest {
         assertEquals("8 Main St", chain.geocode("8 main st", nashville)!!.title)
     }
 
+    @Test fun exactOfflineHouseNearTheStartBeatsAnotherProvidersNamesake() {
+        // Typing "14 East Street" with no city: Google answers with a far-away namesake, the pack knows the house nearby.
+        val crossville = LatLng(35.95, -85.03)
+        val google = Fake(SuggestSource.GOOGLE) { listOf(sug("14 E Street Rd", "West Chester, PA", 39.96, -75.6)) }
+        val offline = Fake(SuggestSource.OFFLINE) { listOf(sug("14 East Street", "Crossville 38555", 35.948, -85.025, SuggestSource.OFFLINE)) }
+        val chain = SuggestChain(listOf(google, offline), trusted = offline)
+        val r = chain.suggest("14 east street", crossville)
+        assertEquals(SuggestSource.OFFLINE, r.answeredBy)
+        assertEquals("14 East Street", r.items.first().title)
+        assertEquals("Google is not even asked", 0, google.calls)
+    }
+
+    @Test fun offlineEstimatesAndFarMatchesDoNotOverrideTheChain() {
+        val crossville = LatLng(35.95, -85.03)
+        val google = Fake(SuggestSource.GOOGLE) { listOf(sug("14 East St", "Crossville, TN", 35.949, -85.026)) }
+        val estimate = Suggestion("14 East Street", "Estimated position", LatLng(35.9, -85.0), SuggestSource.OFFLINE, approximate = true)
+        val farExact = Fake(SuggestSource.OFFLINE) { listOf(sug("14 East Street", "Bluff City", 36.47, -82.25, SuggestSource.OFFLINE)) }
+        assertEquals(SuggestSource.GOOGLE, SuggestChain(listOf(google), trusted = Fake(SuggestSource.OFFLINE) { listOf(estimate) }).suggest("14 east street", crossville).answeredBy)
+        assertEquals(SuggestSource.GOOGLE, SuggestChain(listOf(google), trusted = farExact).suggest("14 east street", crossville).answeredBy)
+        // No start to measure from: an exact house in the pack still leads.
+        assertEquals(SuggestSource.OFFLINE, SuggestChain(listOf(google), trusted = farExact).suggest("14 east street", null).answeredBy)
+    }
+
     @Test fun offlineSlotStubAnswersNothing() {
         assertTrue(NoOfflineAddresses.suggest("1 main st", nashville, 5).isEmpty())
     }

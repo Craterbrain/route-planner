@@ -177,7 +177,17 @@ class LocalSuggestions(private val entries: List<Suggestion>) : SuggestionProvid
  * A provider with a [CircuitBreaker] is skipped while it is open; its failures
  * (exceptions) count toward opening it.
  */
-class SuggestChain(private val providers: List<SuggestionProvider>, private val breakers: Map<SuggestSource, CircuitBreaker> = emptyMap()) {
+class SuggestChain(
+    private val providers: List<SuggestionProvider>,
+    private val breakers: Map<SuggestSource, CircuitBreaker> = emptyMap(),
+    /**
+     * Asked before the chain (it is local and fast). If it knows the house exactly, within [trustedRadiusM] of [near]
+     * (or anywhere when there is no [near]), its rows lead and no other provider is asked: a namesake in another state
+     * from Google or Photon must not hide the house two blocks away.
+     */
+    private val trusted: SuggestionProvider? = null,
+    private val trustedRadiusM: Double = 150_000.0,
+) {
     class Result(
         val items: List<Suggestion>,
         val answeredBy: SuggestSource?,
@@ -189,6 +199,12 @@ class SuggestChain(private val providers: List<SuggestionProvider>, private val 
     fun suggest(query: String, near: LatLng?, limit: Int = 8): Result {
         val skipped = ArrayList<SuggestSource>()
         val failed = ArrayList<Pair<SuggestSource, Throwable>>()
+        trusted?.let { t ->
+            val raw = try { t.suggest(query, near, limit) } catch (e: Exception) { failed += t.source to e; emptyList() }
+            val ranked = (if (t.ranksItself) SuggestRanker.dedupe(raw) else SuggestRanker.rank(query, raw, near)).take(limit)
+            val exactHere = ranked.any { s -> !s.approximate && s.point != null && (near == null || haversine(near, s.point) <= trustedRadiusM) }
+            if (exactHere) return Result(ranked, t.source, skipped, failed)
+        }
         for (p in providers) {
             val b = breakers[p.source]
             if (b?.isOpen() == true) { skipped += p.source; continue }

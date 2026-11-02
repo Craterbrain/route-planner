@@ -13,7 +13,7 @@ import java.util.Locale
  * Address lookup for the search bar, CSV import and long-press.
  *
  * Suggestions while typing (first provider with rows wins; local rows are shown
- * before any of these): Google (unofficial, if enabled and its breaker is closed)
+ * before any of these; a house the offline pack knows exactly near the start comes first of all): Google (unofficial, if enabled and its breaker is closed)
  * → offline address pack → the phone's geocoder → Photon (OSM).
  *
  * Resolving a full address (CSV rows): offline pack when it has the exact house
@@ -64,7 +64,7 @@ class AddressSearch(ctx: Context, private val prefs: Prefs, private val bias: ()
 
     /** Network/offline suggestions through the provider chain. */
     fun suggest(query: String, limit: Int = 8): Outcome {
-        val chain = SuggestChain(listOfNotNull(google, offline, device, photon), mapOf(SuggestSource.GOOGLE to googleBreaker))
+        val chain = SuggestChain(listOfNotNull(google, offline, device, photon), mapOf(SuggestSource.GOOGLE to googleBreaker), trusted = offline)
         val r = chain.suggest(query, bias(), limit)
         val googleTrouble = google != null && (SuggestSource.GOOGLE in r.unhealthy || r.failures.any { it.first == SuggestSource.GOOGLE })
         val note = if (googleTrouble) GOOGLE_DOWN else null
