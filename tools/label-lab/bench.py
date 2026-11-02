@@ -20,6 +20,9 @@ ap.add_argument("--labels", type=int, default=250); ap.add_argument("--seed0", t
 for k, d in [("warp", "0.6"), ("dirt", "0.8"), ("soft", "0.6"), ("fade", "0.8"), ("streak", "0.8"), ("feed", "0.8"), ("light", "0.8")]: ap.add_argument(f"--{k}", default=d)
 ap.add_argument("--region", default="1"); ap.add_argument("--threads", default="3")
 ap.add_argument("--crop", default="0"); ap.add_argument("--maxdim", default="0")
+ap.add_argument("--send", action="store_true", help="no cable: zip the labels and avs send them; open the bench app on the phone, pick the zip, and it sends results back")
+ap.add_argument("--net", action="store_true", help="queue the labels on the job server (benchserver.py) for the phone's Label bench app to fetch over Wi-Fi, wait, and score the results")
+ap.add_argument("--score", metavar="ZIP", help="score a results zip the bench app sent back (use 'latest' for the newest in the AVS inbox)")
 ap.add_argument("--save-failures", metavar="TAG"); ap.add_argument("--cache", default=os.path.join(tempfile.gettempdir(), "label-bench-cache"))
 a = ap.parse_args()
 
@@ -38,31 +41,63 @@ def render(seed):
                     f"http://localhost:8765/?seed={seed}&shot&{params}"], capture_output=True, timeout=180)
     sh("rm", "-rf", prof)
 
+if a.score:
+    import glob, zipfile
+    path = max(glob.glob(os.path.expanduser("~/AVS/inbox/bench-results-*.zip")), key=os.path.getmtime) if a.score == "latest" else a.score
+    zipfile.ZipFile(path).extract("out.jsonl", folder); print("scoring", path)
+    seeds = sorted(int(re.search(r"label(\d+)", json.loads(l)["file"]).group(1)) for l in open(os.path.join(folder, "out.jsonl")))
 t0 = time.time()
 need = [s for s in seeds if not os.path.exists(os.path.join(folder, f"label{s}.png"))]
-with cf.ThreadPoolExecutor(8) as ex: list(ex.map(render, seeds))
+if not a.score:
+    with cf.ThreadPoolExecutor(8) as ex: list(ex.map(render, seeds))
 t_render = time.time() - t0
 
-# the app creates (and so owns) its folder on first start
-sh("adb", "shell", "am", "start", "-n", f"{PKG}/.BenchActivity", "--es", "dir", "none"); time.sleep(2)
-sh("adb", "shell", "rm", "-rf", f"{DEV}/in"); sh("adb", "shell", "mkdir", "-p", f"{DEV}/in")
-wanted = {f"label{s}.png" for s in seeds}
-t1 = time.time()
-for f in sorted(wanted): pass
-subprocess.run(["adb", "push", "--sync", folder + "/.", f"{DEV}/in/"], capture_output=True)
-sh("adb", "shell", "sh", "-c", f"cd {DEV}/in && ls | grep -v -x -E '{'|'.join(sorted(wanted))}' | xargs rm -f")   # only this run's labels
-t_push = time.time() - t1
-sh("adb", "shell", "rm", "-f", f"{DEV}/done.txt", f"{DEV}/out.jsonl")
-t2 = time.time()
-sh("adb", "shell", "am", "start", "-n", f"{PKG}/.BenchActivity", "--es", "dir", "in", "--es", "region", a.region, "--es", "threads", a.threads, "--es", "crop", a.crop, "--es", "maxdim", a.maxdim)
-done = ""
-while time.time() - t2 < 1200:
-    time.sleep(1)
-    done = sh("adb", "shell", "cat", f"{DEV}/done.txt").stdout.strip()
-    if done and "No such file" not in done: break
-t_ocr = time.time() - t2
-out = os.path.join(folder, "out.jsonl")
-sh("adb", "pull", f"{DEV}/out.jsonl", out)
+if a.send or a.net:
+    import zipfile
+    zp = os.path.join(a.cache, f"bench-{a.seed0}-{a.labels}-c{a.crop}-m{a.maxdim}.zip")
+    with zipfile.ZipFile(zp, "w", zipfile.ZIP_STORED) as z:
+        z.writestr("options.json", json.dumps({"region": a.region, "threads": a.threads, "crop": a.crop, "maxdim": a.maxdim}))
+        for s in seeds: z.write(os.path.join(folder, f"label{s}.png"), f"label{s}.png")
+    if a.net:
+        import socket, shutil
+        try: socket.create_connection(("127.0.0.1", 8799), 1).close()
+        except OSError:
+            subprocess.Popen([sys.executable, os.path.join(HERE, "benchserver.py")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True); time.sleep(1)
+        net = os.path.join(tempfile.gettempdir(), "label-bench-net"); jid = f"{int(time.time())}-{a.seed0}-{a.labels}-c{a.crop}-m{a.maxdim}"
+        shutil.copy(zp, os.path.join(net, "queue", jid + ".zip")); res = os.path.join(net, "results", jid + ".zip"); t = time.time()
+        print(f"queued {jid}; waiting for the phone (Label bench open and listening)...", flush=True)
+        while not os.path.exists(res):
+            if time.time() - t > 1500: sys.exit("no result after 25 minutes; is the Label bench app open and listening?")
+            time.sleep(1)
+        print(f"phone finished in {time.time() - t:.0f}s")
+        args = [x for x in sys.argv[1:] if x not in ("--net", "--send")]
+        os.execv(sys.executable, [sys.executable, os.path.abspath(__file__)] + args + ["--score", res])
+    print(subprocess.run(["avs", "send", zp], capture_output=True, text=True).stdout.strip())
+    print(f"sent {len(seeds)} labels. On the phone: download it in AVS, open Label bench, Pick bench zip. Results come back to the AVS inbox; then run with the same flags plus --score latest.")
+    sys.exit(0)
+
+t_push = t_ocr = 0; out = os.path.join(folder, "out.jsonl")
+if not a.score:
+    # the app creates (and so owns) its folder on first start
+    sh("adb", "shell", "am", "start", "-n", f"{PKG}/.BenchActivity", "--es", "dir", "none"); time.sleep(2)
+    sh("adb", "shell", "rm", "-rf", f"{DEV}/in"); sh("adb", "shell", "mkdir", "-p", f"{DEV}/in")
+    wanted = {f"label{s}.png" for s in seeds}
+    t1 = time.time()
+    for f in sorted(wanted): pass
+    subprocess.run(["adb", "push", "--sync", folder + "/.", f"{DEV}/in/"], capture_output=True)
+    sh("adb", "shell", "sh", "-c", f"cd {DEV}/in && ls | grep -v -x -E '{'|'.join(sorted(wanted))}' | xargs rm -f")   # only this run's labels
+    t_push = time.time() - t1
+    sh("adb", "shell", "rm", "-f", f"{DEV}/done.txt", f"{DEV}/out.jsonl")
+    t2 = time.time()
+    sh("adb", "shell", "am", "start", "-n", f"{PKG}/.BenchActivity", "--es", "dir", "in", "--es", "region", a.region, "--es", "threads", a.threads, "--es", "crop", a.crop, "--es", "maxdim", a.maxdim)
+    done = ""
+    while time.time() - t2 < 1200:
+        time.sleep(1)
+        done = sh("adb", "shell", "cat", f"{DEV}/done.txt").stdout.strip()
+        if done and "No such file" not in done: break
+    t_ocr = time.time() - t2
+    out = os.path.join(folder, "out.jsonl")
+    sh("adb", "pull", f"{DEV}/out.jsonl", out)
 
 import difflib
 norm = lambda s: re.sub(r"[^A-Z0-9 ]", "", s.upper()).strip()

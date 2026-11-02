@@ -149,8 +149,8 @@ class ScanActivity : AppCompatActivity() {
     private fun analyze(proxy: ImageProxy) {
         val now = System.currentTimeMillis()
         val media = proxy.image
-        // ~3 frames a second is plenty for a held label and keeps the phone cool.
-        if (media == null || finished || now - lastRun < 350) { proxy.close(); return }
+// Frames are dropped while one is being read (KEEP_ONLY_LATEST), so reading runs back to back, about 4 a second; 100 ms rest keeps the phone from running flat out.
+        if (media == null || finished || now - lastRun < 100) { proxy.close(); return }
         lastRun = now
         val image = InputImage.fromMediaImage(media, proxy.imageInfo.rotationDegrees)
         // Only text on the bright label itself counts; the surroundings are not part of the shipping label.
