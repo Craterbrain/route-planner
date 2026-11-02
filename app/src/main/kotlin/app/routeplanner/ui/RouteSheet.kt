@@ -218,7 +218,7 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
         if (sum.lateStops > 0) header.addFull(ctx.label(13f, M.attr.colorError).apply {
             text = "${sum.lateStops} ${if (sum.lateStops == 1) "stop" else "stops"} can't be reached on time"
         }, topDp = 2)
-        if (s.dirty) changedBanner()
+        if (s.dirty) changedBanner(s)
         val row = ctx.horizontal()
         row.addWeighted(ctx.compact(ctx.tonal(ctx.button("Optimize") { host.optimize() })), marginDp = 4)
         row.addWeighted(ctx.compact(ctx.button("Start route", icon = R.drawable.ic_navigation) { host.startRoute() }), marginDp = 4)
@@ -226,12 +226,17 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
     }
 
     /** "Preview changes": keep the order with fresh times, or re-optimize. */
-    private fun changedBanner() {
+    private fun changedBanner(s: RouteSession) {
         val box = ctx.horizontal().apply {
             background = ctx.roundRect(M.attr.colorTertiaryContainer, 12)
             setPadding(ctx.dp(12), ctx.dp(2), ctx.dp(4), ctx.dp(2))
         }
-        box.addWeighted(ctx.label(13f, M.attr.colorOnTertiaryContainer).apply { text = "Route changed" })
+        val added = s.lastAddedStopId?.let { s.stop(it) }
+        val text = if (added == null) "Route changed" else {
+            val four = s.packages.firstOrNull { it.id == s.lastAddedPkgId }?.let { Barcodes.lastFour(it) }
+            listOfNotNull("Added stop", splitAddress(added.address).first, "ID ${added.entryNo}", totalPackages(s.finder(added).size), four).joinToString(" · ")
+        }
+        box.addWeighted(ctx.label(13f, M.attr.colorOnTertiaryContainer, bold = added != null, lines = 2).apply { this.text = text })
         box.addView(ctx.button("Update", M.attr.borderlessButtonStyle) { host.update() })
         box.addView(ctx.button("Optimize", M.attr.borderlessButtonStyle) { host.optimize() })
         header.addFull(box, topDp = 8, bottomDp = 4)
@@ -244,7 +249,7 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
         barStart.addView(ctx.tonal(ctx.button("Navigate", icon = R.drawable.ic_navigation) { host.navigate(c.id) }))
         barEnd.addView(ctx.button("Stop", M.attr.materialButtonOutlinedStyle, icon = R.drawable.ic_stop) { host.stopRoute() })
         barEnd.addView(routeMenuButton())
-        if (s.dirty) changedBanner()
+        if (s.dirty) changedBanner(s)
         val card = MaterialCardView(ctx).apply {
             setCardBackgroundColor(ctx.color(M.attr.colorPrimaryContainer))
             radius = ctx.dpf(24f)

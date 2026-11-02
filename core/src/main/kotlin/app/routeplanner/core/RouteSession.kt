@@ -304,6 +304,10 @@ class RouteSession(
     /** The stop a package sits at. */
     fun stopOf(pkg: Pkg): Stop? = indexOf(pkg.stopId)?.let { stops[it] }
 
+    /** What the "Added stop" banner describes: the stop and the package last added (not saved; cleared by the next plan). */
+    var lastAddedStopId: String? = null
+    var lastAddedPkgId: String? = null
+
     /** Appends a stop without re-planning (add first, then optimize or update). */
     fun addStop(stop0: Stop, newPackages: List<Pkg> = emptyList(), codes: List<String> = emptyList()): Stop {
         val hadPending = stops.any { it.status == Status.PENDING }
@@ -314,6 +318,8 @@ class RouteSession(
         // Every address holds at least one package; a typed/scanned address gets "<ID>-1".
         packages = packages + newPackages + listOfNotNull(Pkg("${stop.entryNo}-1", stop.id, codes = codes).takeIf { newPackages.none { p -> p.stopId == stop.id } })
         if (!hadPending) cursor = stops.size - 1
+        lastAddedStopId = stop.id
+        lastAddedPkgId = packages.lastOrNull { it.stopId == stop.id }?.id
         dirty = true
         return stop
     }
@@ -362,7 +368,7 @@ class RouteSession(
         val st = indexOf(stopId)?.let { stops[it] } ?: return null
         var n = packages.count { it.stopId == stopId } + 1
         while (packages.any { it.id == "${st.entryNo}-$n" }) n++
-        return Pkg("${st.entryNo}-$n", stopId, codes = codes).also { packages = packages + it }
+        return Pkg("${st.entryNo}-$n", stopId, codes = codes).also { packages = packages + it; lastAddedStopId = stopId; lastAddedPkgId = it.id }
     }
 
     // ---- Re-planning -------------------------------------------------------
@@ -409,6 +415,7 @@ class RouteSession(
         endLegSec = plan.endLegSec
         endLegMeters = plan.endLegMeters
         dirty = false
+        lastAddedStopId = null; lastAddedPkgId = null
         // A plan built by optimizing (cursor reset to the first stop) makes the order a chosen one; a plain re-timing does not.
         if (!keepCursor) optimized = true
     }
