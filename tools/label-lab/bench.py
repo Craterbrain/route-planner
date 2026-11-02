@@ -17,15 +17,16 @@ import argparse, concurrent.futures as cf, hashlib, json, os, re, subprocess, sy
 HERE = os.path.dirname(os.path.abspath(__file__))
 ap = argparse.ArgumentParser()
 ap.add_argument("--labels", type=int, default=250); ap.add_argument("--seed0", type=int, default=5000)
-for k, d in [("warp", "0.6"), ("dirt", "0.8"), ("soft", "0.6"), ("fade", "0.8"), ("streak", "0.8"), ("feed", "0.8")]: ap.add_argument(f"--{k}", default=d)
+for k, d in [("warp", "0.6"), ("dirt", "0.8"), ("soft", "0.6"), ("fade", "0.8"), ("streak", "0.8"), ("feed", "0.8"), ("light", "0.8")]: ap.add_argument(f"--{k}", default=d)
 ap.add_argument("--region", default="1"); ap.add_argument("--threads", default="3")
+ap.add_argument("--crop", default="0"); ap.add_argument("--maxdim", default="0")
 ap.add_argument("--save-failures", metavar="TAG"); ap.add_argument("--cache", default=os.path.join(tempfile.gettempdir(), "label-bench-cache"))
 a = ap.parse_args()
 
 PKG = "app.routeplanner.labelbench"
 DEV = f"/sdcard/Android/data/{PKG}/files"
 sh = lambda *c, **k: subprocess.run(c, capture_output=True, text=True, **k)
-params = f"warp={a.warp}&dirt={a.dirt}&soft={a.soft}&fade={a.fade}&streak={a.streak}&feed={a.feed}"
+params = f"warp={a.warp}&dirt={a.dirt}&soft={a.soft}&fade={a.fade}&streak={a.streak}&feed={a.feed}&light={a.light}"
 folder = os.path.join(a.cache, hashlib.md5(params.encode()).hexdigest()[:10]); os.makedirs(folder, exist_ok=True)
 seeds = [a.seed0 + n for n in range(a.labels)]
 
@@ -53,7 +54,7 @@ sh("adb", "shell", "sh", "-c", f"cd {DEV}/in && ls | grep -v -x -E '{'|'.join(so
 t_push = time.time() - t1
 sh("adb", "shell", "rm", "-f", f"{DEV}/done.txt", f"{DEV}/out.jsonl")
 t2 = time.time()
-sh("adb", "shell", "am", "start", "-n", f"{PKG}/.BenchActivity", "--es", "dir", "in", "--es", "region", a.region, "--es", "threads", a.threads)
+sh("adb", "shell", "am", "start", "-n", f"{PKG}/.BenchActivity", "--es", "dir", "in", "--es", "region", a.region, "--es", "threads", a.threads, "--es", "crop", a.crop, "--es", "maxdim", a.maxdim)
 done = ""
 while time.time() - t2 < 1200:
     time.sleep(1)
@@ -91,7 +92,11 @@ for s in seeds:
 n = len(seeds)
 print(f"exact {exact} + near {near} = {exact + near}/{n} usable ({100 * (exact + near) // n}%), exact {100 * exact // n}%   "
       f"render {t_render:.0f}s ({len(need)} new), push {t_push:.0f}s, phone {t_ocr:.0f}s = {1000 * t_ocr / max(n, 1):.0f} ms/label; ML Kit median {sorted(ms)[len(ms) // 2] if ms else 0} ms")
-print(f"settings: {params} region={a.region}")
+print(f"settings: {params} region={a.region} crop={a.crop} maxdim={a.maxdim}")
+st = {}
+for r in rows.values():
+    for k, v in (r.get("t") or {}).items(): st.setdefault(k, []).append(v)
+if st: print("median ms per stage (3 labels in parallel on the phone):", ", ".join(f"{k} {sorted(v)[len(v) // 2]}" for k, v in st.items()), "| median pixels read:", sorted(r.get("readPixels", 0) for r in rows.values())[len(rows) // 2])
 print("misses:", ", ".join(f"{k} {v}" for k, v in cats.items() if v))
 for s, truth, r, why in fails[:30]:
     c = ((r or {}).get("candidates") or [{}])[0]

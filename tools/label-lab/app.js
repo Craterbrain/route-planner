@@ -114,11 +114,38 @@ function applyDamage() {
     const at = 25 + r() * 50, a2 = Math.floor(r() * 180);
     shade += `, linear-gradient(${a2}deg, transparent ${at - 0.6}%, rgba(0,0,0,${(0.16 * warp).toFixed(3)}) ${at}%, rgba(255,255,255,${(0.35 * warp).toFixed(3)}) ${at + 0.5}%, transparent ${at + 1.4}%)`;
   }
-  $("shade").style.background = shade;
+  $("shade").style.background = shade; $("shade").dataset.base = shade;
   $("shade").style.boxShadow = `inset 0 0 ${(30 + r() * 30).toFixed(0)}px rgba(60,40,10,${(0.18 * warp).toFixed(3)})`;
 
   drawDirt(r, dirt);
   printerDefects(r, fade, streak, feed);
+  lighting(r, +$("light").value);
+}
+
+// ---- Lighting: exposure, uneven light, shadow and glare -----------------------------------------------------------
+
+function lighting(r, light) {
+  const stage = $("stage"), shade = $("shade");
+  // Exposure: from dim (a dark van) to overexposed (flash on white paper), contrast following it.
+  const e = 1 + (r() - 0.5) * 1.1 * light;                 // 0.45 .. 1.55 at light = 2
+  const contrast = e < 1 ? 1 - (1 - e) * 0.35 : 1 - (e - 1) * 0.55;   // dim: a little flat; bright: washed out
+  stage.style.filter = light > 0 ? `brightness(${e.toFixed(2)}) contrast(${contrast.toFixed(2)})` : "none";
+  // Uneven light and glare, painted on top of the paper (on top of the damage shading already there).
+  const layers = [];
+  if (light > 0) {
+    const ang = Math.floor(r() * 360), dark = (0.10 + r() * 0.28) * light;
+    layers.push(`linear-gradient(${ang}deg, rgba(0,0,0,${dark.toFixed(2)}) 0%, rgba(0,0,0,0) 62%)`);          // light falls off across the sheet
+    if (r() < 0.5 * light) {                                                                                   // a shadow band (a hand, the van door)
+      const at = 15 + r() * 60, w = 6 + r() * 14, a2 = Math.floor(r() * 180);
+      layers.push(`linear-gradient(${a2}deg, transparent ${at}%, rgba(0,0,0,${(0.22 * light).toFixed(2)}) ${at + w * 0.3}%, rgba(0,0,0,${(0.22 * light).toFixed(2)}) ${at + w}%, transparent ${at + w * 1.4}%)`);
+    }
+    if (r() < 0.55 * light) {                                                                                  // a glare hot-spot from the flash
+      const x = 15 + r() * 70, y = 10 + r() * 80, rad = 14 + r() * 22;
+      layers.push(`radial-gradient(ellipse ${rad}% ${rad * 0.7}% at ${x}% ${y}%, rgba(255,255,255,${Math.min(0.95, 0.55 + 0.3 * light).toFixed(2)}) 0%, rgba(255,255,255,0) 100%)`);
+    }
+  }
+  const base = shade.dataset.base || "";
+  shade.style.background = [...layers, base].filter(Boolean).join(", ");
 }
 
 // ---- Printer defects ------------------------------------------------------------------------------------------
@@ -221,14 +248,14 @@ function render() {
 
 $("newAddr").onclick = newAddress;
 $("reroll").onclick = () => { seed = Math.floor(Math.random() * 1e6); applyDamage(); };
-for (const id of ["warp", "dirtAmt", "soft", "fade", "streak", "feed"]) $(id).oninput = applyDamage;
+for (const id of ["warp", "dirtAmt", "soft", "fade", "streak", "feed", "light"]) $(id).oninput = applyDamage;
 addEventListener("keydown", (e) => {
   if (e.target.tagName === "INPUT") return;
   if (e.code === "Space") { e.preventDefault(); newAddress(); }
   else if (e.key === "r" || e.key === "R") $("reroll").click();
 });
 const qs = new URLSearchParams(location.search);
-for (const [k, id] of [["warp", "warp"], ["dirt", "dirtAmt"], ["soft", "soft"], ["fade", "fade"], ["streak", "streak"], ["feed", "feed"]]) if (qs.has(k)) $(id).value = qs.get(k);
+for (const [k, id] of [["warp", "warp"], ["dirt", "dirtAmt"], ["soft", "soft"], ["fade", "fade"], ["streak", "streak"], ["feed", "feed"], ["light", "light"]]) if (qs.has(k)) $(id).value = qs.get(k);
 if (qs.has("shot")) document.body.classList.add("shot");
 if (qs.has("fit")) {      // scale the label to fill the window height, as a phone camera would like it
   const fit = () => { const k = Math.min((innerHeight - 40) / 1100, innerWidth / 760); $("scene").style.transform = `scale(${k})`; $("scene").style.transformOrigin = "top center"; };
@@ -236,5 +263,5 @@ if (qs.has("fit")) {      // scale the label to fill the window height, as a pho
 }
 if (qs.has("remote")) { let seen = null; setInterval(async () => { const c = await (await fetch("/api/cmd", { cache: "no-store" })).json(); if (seen !== null && c.n !== seen) newAddress(); seen = c.n; }, 700); }   // ?remote: the test driver advances labels
 if (qs.has("auto")) setInterval(() => newAddress(), Math.max(3, +qs.get("auto")) * 1000);   // ?auto=SECONDS: a new label on a timer
-if (/clean/.test(location.search)) for (const id of ["warp", "dirtAmt", "soft", "fade", "streak", "feed"]) $(id).value = 0; // ?clean: undamaged label
+if (/clean/.test(location.search)) for (const id of ["warp", "dirtAmt", "soft", "fade", "streak", "feed", "light"]) $(id).value = 0; // ?clean: undamaged label
 if (window.__first) { current = window.__first; seed = qs.has("seed") ? +qs.get("seed") * 31 + 7 : Math.floor(Math.random() * 1e6); render(); } else newAddress();
