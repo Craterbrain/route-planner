@@ -196,7 +196,12 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         }
         val fitList = { sheet.setOverflow((sheet.view.bottom - root.height).coerceAtLeast(0)) }
         behavior.addBottomSheetCallback(object : BottomSheetBehavior.BottomSheetCallback() {
-            override fun onStateChanged(v: android.view.View, newState: Int) = fitList()
+            override fun onStateChanged(v: android.view.View, newState: Int) {
+                // The user taking over (or arriving) ends a pending "collapse once the header has its final height".
+                if (newState == BottomSheetBehavior.STATE_DRAGGING || newState == BottomSheetBehavior.STATE_EXPANDED ||
+                    newState == BottomSheetBehavior.STATE_HALF_EXPANDED) collapseWanted = false
+                fitList()
+            }
             override fun onSlide(v: android.view.View, offset: Float) = fitList()
         })
         sheet.view.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> root.post { fitList() } }
@@ -307,6 +312,9 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
             .coerceAtMost((root.height * 0.62f).toInt().coerceAtLeast(dp(120)))
             .coerceAtLeast(dp(96))
         behavior.peekHeight = peek
+        // A collapse requested while the sheet was still settling (or before the header reached its final height) used the old
+        // peek, which left the driving card cut off: collapse again now that the peek is right.
+        if (collapseWanted && behavior.state != BottomSheetBehavior.STATE_DRAGGING) behavior.state = BottomSheetBehavior.STATE_COLLAPSED
         behavior.expandedOffset = barBottom + dp(8)
         // Keep the half-expanded stop above the (possibly tall) collapsed one.
         if (root.height > 0) behavior.halfExpandedRatio = ((peek + dp(220)).toFloat() / root.height).coerceIn(0.5f, 0.9f)
@@ -556,6 +564,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         SessionStore.commit(this)
         update() // ETAs from now
         if (currentStart()?.live == true) refreshLiveStart()
+        collapseWanted = true
         behavior.state = BottomSheetBehavior.STATE_COLLAPSED
         startFloatingButton()
     }
@@ -826,6 +835,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         }.onFailure { Toast.makeText(this, "No camera app available", Toast.LENGTH_SHORT).show() }
     }
 
+    private var collapseWanted = false
     private var askedOverlayPermission = false
     private var resumedOverlay = false
 
