@@ -159,7 +159,7 @@ object Dialogs {
         box.addFull(ctx.compact(ctx.tonal(ctx.button("Search an address", icon = R.drawable.ic_search) { dlg?.dismiss(); onSearch() })), topDp = 4)
         if (onPick != null) box.addFull(ctx.compact(ctx.button("Pick on the map", M.attr.materialButtonOutlinedStyle) { dlg?.dismiss(); onPick() }), topDp = 4)
         box.addFull(ctx.label(12f, M.attr.colorPrimary, bold = true).apply { text = "ROUTE ENDS" }, topDp = 16, bottomDp = 4)
-        val labels = listOf("At last stop", "Back at start", "At an address")
+        val labels = listOf("Last stop", "Start", "Address")
         val group = toggleGroup(ctx, labels, when (end.mode) {
             EndMode.ROUND_TRIP -> labels[1]; EndMode.ADDRESS -> labels[2]; else -> labels[0]
         }).apply { isSelectionRequired = true }
@@ -167,7 +167,7 @@ object Dialogs {
         val hint = ctx.label(12f, M.attr.colorOnSurfaceVariant)
         fun describe() {
             hint.text = when (group.value()) {
-                labels[1] -> "\"Back at start\" plans a round trip; the drive back counts toward the finish time and distance."
+                labels[1] -> "\"Start\" plans a round trip back to the start; the drive back counts toward the finish time and distance."
                 labels[2] -> end.label?.let { "Ends at: " + it.substringBefore(',') + "." } ?: "Choose where the route ends. The drive there counts toward the finish time."
                 else -> "The route ends at the last stop, with no return drive."
             }

@@ -1,8 +1,25 @@
+<p align="center"><img src="docs/images/banner.png" alt="Route Planner: plan it, drive it, deliver it" width="720"></p>
+
 # route-planner
 
 A Circuit-style delivery route optimizer, targeting **Android**. Design brief: [docs/idea.md](docs/idea.md). UI/UX research on Circuit (now Spoke Route Planner) and the feature checklist: [docs/circuit-research.md](docs/circuit-research.md).
 
 See [docs/architecture.md](docs/architecture.md) for the architecture review, measurements and known debts.
+
+## Screenshots
+
+<table>
+<tr>
+<td align="center"><img src="docs/images/screenshots/plan.png" width="190"><br><sub>Plan: stops, times, Optimize</sub></td>
+<td align="center"><img src="docs/images/screenshots/map.png" width="190"><br><sub>The route along the roads</sub></td>
+<td align="center"><img src="docs/images/screenshots/driving.png" width="190"><br><sub>Driving: next-stop card</sub></td>
+<td align="center"><img src="docs/images/screenshots/stop-details.png" width="190"><br><sub>Stop details and package finder</sub></td>
+</tr>
+</table>
+
+<p align="center"><img src="docs/images/screenshots/floating-button.png" width="400"><br><sub>The floating button over your navigation app: Failed, Delivered (with Undo), previous / next stop</sub></p>
+
+*Addresses in the screenshots are public places picked from the offline address pack and OpenStreetMap; nothing personal.*
 
 ## License
 

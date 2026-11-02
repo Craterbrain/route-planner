@@ -44,7 +44,7 @@ class SearchPanel(
 
     val card = MaterialCardView(act).apply {
         radius = act.dpf(20f)
-        cardElevation = act.dpf(4f)
+        cardElevation = act.dpf(12f) // above the bottom sheet (6 dp), so suggestions show over an expanded sheet
         setCardBackgroundColor(act.color(M.attr.colorSurfaceContainerHigh))
         strokeWidth = 0
         visibility = View.GONE

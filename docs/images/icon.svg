@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 108 108">
+<defs><linearGradient id="pinG" x1="56" y1="28" x2="82" y2="66" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#D3EEF3"/></linearGradient><linearGradient id="bgG" x1="0" y1="0" x2="0" y2="108" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#14606F"/><stop offset="1" stop-color="#0B3946"/></linearGradient></defs>
+<rect width="108" height="108" fill="url(#bgG)"/>
+<g transform="translate(54,54) scale(0.92) translate(-55,-50.5)">
+<path d="M68,26 C59.16,26 52,33.16 52,42 C52,53.5 68,72 68,72 C68,72 84,53.5 84,42 C84,33.16 76.84,26 68,26 Z" fill="#000" fill-opacity="0.22" transform="translate(1.6,2.2)"/>
+<path d="M32,68 C32,55 44,52 46,62 C48,73 58,77 67,71" fill="none" stroke="#9FD8E3" stroke-width="4.6" stroke-linecap="round"/>
+<path d="M68,26 C59.16,26 52,33.16 52,42 C52,53.5 68,72 68,72 C68,72 84,53.5 84,42 C84,33.16 76.84,26 68,26 Z M62.5,36 h11 a1.5,1.5 0 0 1 1.5,1.5 v9 a1.5,1.5 0 0 1 -1.5,1.5 h-11 a1.5,1.5 0 0 1 -1.5,-1.5 v-9 a1.5,1.5 0 0 1 1.5,-1.5 Z" fill="url(#pinG)" fill-rule="evenodd"/>
+<path d="M66.5,36 h3 v5 h-3 Z" fill="url(#pinG)"/>
+<circle cx="32" cy="68" r="5.6" fill="#9FD8E3"/>
+<circle cx="32" cy="68" r="2.5" fill="#0F4C5C"/>
+<circle cx="46" cy="62" r="5.6" fill="#9FD8E3"/>
+<circle cx="46" cy="62" r="2.5" fill="#0F4C5C"/>
+</g></svg>
