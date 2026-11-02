@@ -129,10 +129,10 @@ class PermissionsSheet(
         head.addWeighted(act.label(16f, bold = true).apply { text = title })
         head.addView(act.label(13f, when (state) {
             State.OK -> M.attr.colorPrimary
-            State.MISSING -> M.attr.colorError
+            State.MISSING -> if (title == "Network") M.attr.colorError else M.attr.colorOnSurfaceVariant // not asked yet is not an error
             else -> M.attr.colorOnSurfaceVariant
         }, bold = true).apply {
-            text = when (state) { State.OK -> "Allowed"; State.MISSING -> "Not allowed"; State.OPTIONAL -> "Optional"; State.CHECKING -> "Checking…" }
+            text = when (state) { State.OK -> "Allowed"; State.MISSING -> "Not yet"; State.OPTIONAL -> "Optional"; State.CHECKING -> "Checking…" }
             if (title == "Network" && state == State.OK) text = "Working"
             if (title == "Network" && state == State.MISSING) text = "Not working"
         })

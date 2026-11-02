@@ -2,6 +2,7 @@ package app.routeplanner
 
 import android.app.Activity
 import android.view.View
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import app.routeplanner.ui.*
 import com.google.android.material.R as M
@@ -87,14 +88,16 @@ class RoadDownloadFlow(
             text = "Roads © OpenStreetMap contributors, built with Valhalla. Wi-Fi is best: this is ${(pack.downloadBytes + (addresses[pack.state]?.gzBytes ?: 0L)) / 1_000_000} MB (roads${if (addresses.containsKey(pack.state)) " and house addresses" else ""}). If it stops, open this again to resume."
         }, topDp = 12)
         val dlg: AlertDialog = MaterialAlertDialogBuilder(act).setTitle("${pack.title} data").setView(box).setCancelable(false)
-            .setNegativeButton("Cancel", null).show()
+            .setNegativeButton("Cancel", null).setNeutralButton("Hide", null).show()
         dlg.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener { cancel = true; status.text = "Cancelling…" }
+        // Hide: the download carries on in the background; you are told when it finishes (or fails).
+        dlg.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener { dlg.dismiss(); Toast.makeText(act, "Downloading in the background", Toast.LENGTH_SHORT).show() }
         Thread {
             val r = runCatching {
                 RoadDownload.install(act, pack, addresses[pack.state], { cancel }, { done, total ->
                     act.runOnUiThread {
                         bar.isIndeterminate = false; bar.progress = (done * 1000 / total.coerceAtLeast(1)).toInt()
-                        status.text = "${done / 1_000_000} of ${total / 1_000_000} MB"
+                        status.text = "${done / 1_000_000} of ${total / 1_000_000} MB · ${(done * 100 / total.coerceAtLeast(1))}%"
                     }
                 }, { p -> act.runOnUiThread { status.text = p; if (p != "Downloading") bar.isIndeterminate = true } })
             }

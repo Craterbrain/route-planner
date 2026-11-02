@@ -104,19 +104,21 @@ class StopDetailSheet(private val act: Activity, private val host: RouteHost, pr
             }
         }, topDp = 4)
         head.addWeighted(titles)
+        head.addView(act.iconButton(R.drawable.ic_close, "Close") { dialog.dismiss() })
         body.addFull(head, topDp = 4)
 
-        // Primary actions.
+        // Primary actions. Outcomes (Failed / Delivered) only once the route is running: while planning, a stray tap
+        // on a filled "Delivered" would mark a stop done that nobody has visited.
         val actions = act.horizontal()
         actions.addWeighted(act.compact(act.tonal(act.button("Navigate", icon = R.drawable.ic_navigation) { closeThen { host.navigate(st.id) } })), marginDp = 3)
-        if (st.status == Status.PENDING) {
+        if (st.status != Status.PENDING) {
+            actions.addWeighted(act.button("Undo", M.attr.materialButtonOutlinedStyle) { host.undo(st.id); render() }, marginDp = 3)
+        } else if (s.started) {
             actions.addWeighted(act.compact(act.button("Failed", M.attr.materialButtonOutlinedStyle) { closeThen { host.fail(st.id) } }), marginDp = 3)
             actions.addWeighted(act.compact(act.button("Delivered", icon = R.drawable.ic_check) { closeThen { host.deliver(st.id) } }), marginDp = 3)
-        } else {
-            actions.addWeighted(act.button("Undo", M.attr.materialButtonOutlinedStyle) { host.undo(st.id); render() }, marginDp = 3)
         }
         body.addFull(actions, topDp = 12)
-        if (st.status == Status.PENDING) body.addFull(act.button("Delivered with photo or note…", M.attr.borderlessButtonStyle) {
+        if (st.status == Status.PENDING && s.started) body.addFull(act.button("Delivered with proof…", M.attr.borderlessButtonStyle) {
             closeThen { host.deliverWithProof(st.id) }
         })
 
@@ -128,6 +130,7 @@ class StopDetailSheet(private val act: Activity, private val host: RouteHost, pr
             st.proofSignature?.let { path -> thumbnail(path, "Recipient signature")?.let { body.addFull(it, topDp = 6) } }
         }
 
+        val orderBlock = {
         if (st.status == Status.PENDING) {
             section("Order")
             body.addFull(placementToggle(st))
@@ -144,6 +147,8 @@ class StopDetailSheet(private val act: Activity, private val host: RouteHost, pr
         svc.addView(act.button("+", M.attr.materialButtonOutlinedStyle) { setService(st, minutes + 1) }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = act.dp(8) })
         body.addFull(svc)
 
+        }
+        val notesBlock = {
         section("Notes")
         notes = EditText(act).apply {
             hint = "Gate code, where to leave it…"
@@ -163,6 +168,10 @@ class StopDetailSheet(private val act: Activity, private val host: RouteHost, pr
         if (st.status == Status.PENDING) body.addFull(act.button("Add another package", M.attr.materialButtonOutlinedStyle) {
             session()?.addPackageTo(st.id); commit(); render()
         }, topDp = 4)
+
+        }
+        // Driving: what a courier needs at the door (notes, package finder) first; planning: the scheduling controls first.
+        if (s.started) { notesBlock(); orderBlock() } else { orderBlock(); notesBlock() }
 
         section("Drop-off point")
         val moved = st.access != st.target
@@ -283,7 +292,7 @@ class StopDetailSheet(private val act: Activity, private val host: RouteHost, pr
      * last four characters bold and in the accent color, so they can be compared with the label by eye.
      */
     private fun packageText(p: Pkg): CharSequence {
-        val sb = SpannableStringBuilder("${p.id}\n${p.truckZone ?: "Location not set"}")
+        val sb = SpannableStringBuilder("${p.id}\n${p.truckZone ?: "No shelf set"}")
         if (p.codes.isEmpty()) return sb
         // The longest value is almost always the tracking number.
         val shown = Barcodes.shown(p.codes.maxByOrNull { it.length }!!)

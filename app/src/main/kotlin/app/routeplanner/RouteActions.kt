@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.net.Uri
 import app.routeplanner.core.*
+import app.routeplanner.ui.imperialUnits
 import app.routeplanner.ui.totalPackages
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import java.io.File
@@ -96,6 +97,7 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
         if (s.stops.none { it.status == Status.PENDING }) { s.dirty = false; SessionStore.commit(act); return }
         val from = origin(s) ?: return
         val my = ++generation
+        val before = s.summary().remainingSec
         val dlg = if (showBusy) busy(if (optimize) "Optimizing route…" else "Updating route…") else null
         background({
             val src = Routing.source(act, prefs)
@@ -108,7 +110,9 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
                 SessionStore.commit(act)
                 if (optimize && alive) {
                     val degraded = (src.provider as? ValhallaMatrix)?.degraded == true
-                    ui.snack("Optimized · ${plan.stops.size} stops · times from ${src.label}" +
+                    val saved = (before - s.summary().remainingSec) / 60
+                    ui.snack("Optimized · ${plan.stops.size} stops" + (if (saved >= 1) " · saved $saved min" else " · already the best order found") +
+                        " · times from ${src.label}" +
                         (if (degraded) " (some estimated)" else "") +
                         (if (plan.lateStops > 0) " · ${plan.lateStops} late" else ""))
                 }
@@ -176,6 +180,16 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
         val existing = s0?.pendingStopAt(address)
         if (s0 != null && existing != null) {
             askAnotherPackage(s0, existing, packageId, codes) { createStop(address, door, typed, approximate, packageId, notes, codes) }
+            return null
+        }
+        // A namesake in another state ("14 East Street" in Pennsylvania) turns a 13-minute route into a 31-hour one: ask first.
+        val origin = searchBias()
+        if (origin != null && alive && haversine(origin, door) > FAR_STOP_M) {
+            MaterialAlertDialogBuilder(act).setTitle("This stop is far away")
+                .setMessage("${address.substringBefore(',')} is ${formatDistance(haversine(origin, door).toInt(), imperialUnits())} from your start. " +
+                    "Is that the right place? Adding the city or ZIP usually finds the nearby one.")
+                .setPositiveButton("Add it anyway") { _, _ -> createStop(address, door, typed, approximate, packageId, notes, codes) }
+                .setNegativeButton("Don't add", null).show()
             return null
         }
         return createStop(address, door, typed, approximate, packageId, notes, codes)
@@ -289,5 +303,7 @@ class RouteActions(private val act: Activity, private val prefs: Prefs, private 
 
     companion object {
         const val REQ_LOCATION = 2
+        /** A new stop farther than this (about 50 miles) from the route start gets a "right place?" question. */
+        const val FAR_STOP_M = 80_000.0
     }
 }

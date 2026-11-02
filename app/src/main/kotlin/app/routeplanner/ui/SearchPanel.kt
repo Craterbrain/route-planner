@@ -13,7 +13,10 @@ import app.routeplanner.AddressSearch
 import app.routeplanner.R
 import app.routeplanner.color
 import app.routeplanner.core.AddressMatch
+import app.routeplanner.core.LatLng
 import app.routeplanner.core.PhotonGeocoder
+import app.routeplanner.core.formatDistance
+import app.routeplanner.core.haversine
 import app.routeplanner.core.Suggestion
 import app.routeplanner.core.SuggestRanker
 import app.routeplanner.core.SuggestSource
@@ -33,6 +36,8 @@ class SearchPanel(
     private val search: () -> AddressSearch,
     /** Adds the typed text as a stop even though nothing confirmed it (placed approximately; the driver fixes the pin). */
     private val onAddAnyway: (String) -> Unit,
+    /** Where distances on the rows are measured from (the route start), or null. */
+    private val origin: () -> LatLng? = { null },
     private val onPick: (Suggestion, String) -> Unit,
 ) {
     companion object { const val DEBOUNCE_MS = 350L }
@@ -151,6 +156,14 @@ class SearchPanel(
         return row
     }
 
+    /** "742 mi" from the route start, so a namesake in another state is obvious; nothing under ~1 mi. */
+    private fun distanceNote(s: Suggestion): String {
+        val from = origin() ?: return ""
+        val p = s.point ?: return ""
+        val m = haversine(from, p)
+        return if (m < 1500) "" else formatDistance(m.toInt(), imperialUnits()) + " away"
+    }
+
     private fun row(s: Suggestion, typed: String): View {
         val row = act.horizontal().apply {
             setPadding(act.dp(20), act.dp(8), act.dp(4), act.dp(8))
@@ -166,6 +179,7 @@ class SearchPanel(
             s.subtitle,
             if (s.source == SuggestSource.LOCAL) "recent" else "",
             if (s.approximate && !s.subtitle.contains("Estimated")) "estimated position" else "",
+            distanceNote(s),
         ).filter { it.isNotEmpty() }.joinToString(" · ")
         if (sub.isNotEmpty()) texts.addFull(act.label(13f, if (s.approximate) M.attr.colorTertiary else M.attr.colorOnSurfaceVariant, lines = 1).apply { text = sub })
         row.addWeighted(texts)

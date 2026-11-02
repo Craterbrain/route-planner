@@ -30,6 +30,7 @@ import app.routeplanner.ui.badgeText
 import app.routeplanner.ui.dp
 import app.routeplanner.ui.label
 import app.routeplanner.ui.roundRect
+import app.routeplanner.core.splitAddress
 import app.routeplanner.ui.totalPackages
 import com.google.android.material.R as M
 import kotlin.math.abs
@@ -51,6 +52,9 @@ class OverlayService : Service() {
     private lateinit var fab: FrameLayout
     private lateinit var panel: LinearLayout
     private lateinit var info: LinearLayout
+    private lateinit var undoStrip: TextView
+    private lateinit var fabIcon: ImageView
+    private lateinit var fabNumber: TextView
     private lateinit var lp: WindowManager.LayoutParams
     private var expanded = false
     private val main = Handler(Looper.getMainLooper())
@@ -97,6 +101,23 @@ class OverlayService : Service() {
         return START_NOT_STICKY
     }
 
+    /** After Delivered from the panel: the panel stays up for five seconds with an Undo, then folds away. */
+    private fun showUndo(stopId: String, where: String) {
+        undoStrip.text = "Delivered · $where  —  Undo"
+        undoStrip.setOnClickListener {
+            SessionStore.act(this) { undo(stopId); null }
+            main.removeCallbacks(hideUndo)
+            undoStrip.visibility = View.GONE
+        }
+        undoStrip.visibility = View.VISIBLE
+        main.removeCallbacks(hideUndo)
+        main.postDelayed(hideUndo, 5_000)
+    }
+
+    private val hideUndo = Runnable {
+        if (::undoStrip.isInitialized) { undoStrip.visibility = View.GONE; setExpanded(false) }
+    }
+
     /** The current stop: number badge and the street address (big), then its ID badge and package count. Tapping opens the app on that stop. */
     private fun bindInfo() {
         info.removeAllViews()
@@ -106,6 +127,7 @@ class OverlayService : Service() {
             info.addView(t.label(15f).apply { text = if (s?.done == true) "All stops handled" else "No route" })
             return
         }
+        fabNumber.text = c.optimizedIndex.toString(); fabNumber.visibility = View.VISIBLE; fabIcon.visibility = View.GONE
         val colors = t.badgeColors(c, true)
         val top = LinearLayout(t).apply { gravity = Gravity.CENTER_VERTICAL }
         top.addView(TextView(t).apply {
@@ -114,8 +136,12 @@ class OverlayService : Service() {
             setTextColor(colors.text)
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(colors.fill) }
         }, LinearLayout.LayoutParams(t.dp(38), t.dp(38)).apply { marginEnd = t.dp(10) })
-        top.addView(t.label(21f, bold = true, lines = 2).apply { text = c.address.substringBefore(',') },
-            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        val where = LinearLayout(t).apply { orientation = LinearLayout.VERTICAL }
+        where.addView(t.label(21f, bold = true, lines = 2).apply { text = c.address.substringBefore(',') })
+        splitAddress(c.address).second.takeIf { it.isNotEmpty() }?.let { city ->
+            where.addView(t.label(14f, M.attr.colorOnSurfaceVariant, lines = 1).apply { text = city })
+        }
+        top.addView(where, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         info.addView(top)
         val meta = LinearLayout(t).apply { gravity = Gravity.CENTER_VERTICAL }
         meta.addView(TextView(t).apply {
@@ -131,11 +157,11 @@ class OverlayService : Service() {
 
     private fun circle(colorAttr: Int) = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(t.color(colorAttr)) }
 
-    private fun action(icon: Int, desc: String, bg: Int, fg: Int, onClick: () -> Unit) = ImageView(t).apply {
+    private fun action(icon: Int, desc: String, bg: Int, fg: Int, pill: Boolean = false, onClick: () -> Unit) = ImageView(t).apply {
         setImageResource(icon)
         setColorFilter(t.color(fg))
         contentDescription = desc
-        background = circle(bg)
+        background = if (pill) GradientDrawable().apply { cornerRadius = t.dp(24).toFloat(); setColor(t.color(bg)) } else circle(bg)
         val p = t.dp(12)
         setPadding(p, p, p, p)
         setOnClickListener { onClick() }
@@ -146,10 +172,17 @@ class OverlayService : Service() {
             background = circle(M.attr.colorPrimaryContainer)
             elevation = t.dp(6).toFloat()
             contentDescription = "Route Planner floating button"
-            addView(ImageView(t).apply {
+            fabIcon = ImageView(t).apply {
                 setImageResource(R.drawable.ic_navigation)
                 setColorFilter(t.color(M.attr.colorOnPrimaryContainer))
-            }, FrameLayout.LayoutParams(t.dp(28), t.dp(28), Gravity.CENTER))
+            }
+            addView(fabIcon, FrameLayout.LayoutParams(t.dp(28), t.dp(28), Gravity.CENTER))
+            fabNumber = TextView(t).apply {
+                textSize = 20f; gravity = Gravity.CENTER; visibility = View.GONE
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setTextColor(t.color(M.attr.colorOnPrimaryContainer))
+            }
+            addView(fabNumber, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         }
         info = LinearLayout(t).apply {
             orientation = LinearLayout.VERTICAL
@@ -160,21 +193,37 @@ class OverlayService : Service() {
                 setExpanded(false)
             }
         }
+        // Same order as the app's card: Failed on the left, Delivered (wider, so the likelier tap is the bigger one) on the right,
+        // with a gap between them and the stop-to-stop arrows so a thumb on a moving phone doesn't hit the wrong one.
         val actions = LinearLayout(t).apply { gravity = Gravity.CENTER }
-        fun add(v: View) = actions.addView(v, LinearLayout.LayoutParams(t.dp(48), t.dp(48)).apply { setMargins(t.dp(4), 0, t.dp(4), 0) })
+        fun add(v: View, w: Int = 48, margin: Int = 4) = actions.addView(v, LinearLayout.LayoutParams(t.dp(w), t.dp(48)).apply { setMargins(t.dp(margin), 0, t.dp(margin), 0) })
         add(action(R.drawable.ic_chevron_left, "Previous stop (marks it pending again)", M.attr.colorSecondaryContainer, M.attr.colorOnSecondaryContainer) {
             SessionStore.act(this) { prev(); null }
-        })
-        add(action(R.drawable.ic_check, "Delivered", M.attr.colorPrimary, M.attr.colorOnPrimary) {
-            SessionStore.act(this) { deliver() }; setExpanded(false)
-        })
+        }, margin = 2)
+        add(View(t), w = 12, margin = 0)
         add(action(R.drawable.ic_close, "Failed", M.attr.colorErrorContainer, M.attr.colorOnErrorContainer) {
             startActivity(Intent(this, MainActivity::class.java).setAction(MainActivity.ACTION_FAIL).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             setExpanded(false)
-        })
+        }, margin = 3)
+        add(action(R.drawable.ic_check, "Delivered", M.attr.colorPrimary, M.attr.colorOnPrimary, pill = true) {
+            val s0 = SessionStore.session
+            val c = s0?.current
+            if (c != null) {
+                SessionStore.act(this) { deliver() }
+                showUndo(c.id, c.address.substringBefore(','))
+            }
+        }, w = 84, margin = 3)
+        add(View(t), w = 12, margin = 0)
         add(action(R.drawable.ic_chevron_right, "Next stop", M.attr.colorSecondaryContainer, M.attr.colorOnSecondaryContainer) {
             SessionStore.act(this) { next(); null }
-        })
+        }, margin = 2)
+        undoStrip = TextView(t).apply {
+            textSize = 14f
+            setTextColor(t.color(M.attr.colorPrimary))
+            gravity = Gravity.CENTER
+            setPadding(t.dp(8), t.dp(10), t.dp(8), t.dp(6))
+            visibility = View.GONE
+        }
         panel = LinearLayout(t).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(t.dp(8), t.dp(10), t.dp(8), t.dp(10))
@@ -183,6 +232,7 @@ class OverlayService : Service() {
             visibility = View.GONE
             addView(info, LinearLayout.LayoutParams(t.dp(280), LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(actions)
+            addView(undoStrip, LinearLayout.LayoutParams(t.dp(280), LinearLayout.LayoutParams.WRAP_CONTENT))
         }
         val r = LinearLayout(t).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -327,6 +377,7 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         running = false
+        main.removeCallbacks(hideUndo)
         hideDismissTarget()
         SessionStore.unobserve(refresh)
         visibilityListeners -= visibility

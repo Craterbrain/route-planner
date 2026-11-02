@@ -253,7 +253,7 @@ object Dialogs {
         box.addFull(map)
         box.addFull(ctx.button("Offline maps…", M.attr.materialButtonOutlinedStyle) { openOfflineMaps() }, topDp = 4, bottomDp = 4)
         box.addFull(ctx.label(13f, M.attr.colorOnSurfaceVariant).apply {
-            text = "Map tiles: OpenFreeMap (© OpenMapTiles, © OpenStreetMap contributors). Needs a connection; areas you've viewed are cached. The stop list works without it."
+            text = "Map tiles: OpenFreeMap (© OpenMapTiles, © OpenStreetMap contributors). Needs a connection unless you save an area with Offline maps; areas you've viewed are cached. The stop list works without it."
         })
 
         box.addFull(ctx.label(12f, M.attr.colorPrimary, bold = true).apply { text = "ROAD TIMES" }, topDp = 16)
@@ -262,7 +262,7 @@ object Dialogs {
         box.addFull(ctx.button("Import road data (.tar)", M.attr.materialButtonOutlinedStyle) { importRoads() }, topDp = 4)
         box.addFull(ctx.label(13f, M.attr.colorOnSurfaceVariant).apply { text = "Optional Valhalla server (used only without road data):" }, topDp = 8)
         val url = EditText(ctx).apply {
-            hint = "http://192.168.1.10:8002"
+            hint = "Server address, e.g. http://192.168.1.10:8002"
             setText(m.serverUrl)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
         }

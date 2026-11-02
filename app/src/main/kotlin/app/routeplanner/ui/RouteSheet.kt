@@ -82,6 +82,8 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
     fun render(s: RouteSession?, start: RouteStart?, end: EndMode) {
         finderAnim?.cancel()
         header.removeAllViews()
+        // The start row is planning information; while driving it only gets in the way (and sat under the nav bar).
+        startRow.visibility = if (s != null && s.started && !s.done) View.GONE else View.VISIBLE
         barStart.removeAllViews()
         barEnd.removeAllViews()
         renderStartRow(start, end)
@@ -251,18 +253,21 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
         card.addView(body)
         val onCard = M.attr.colorOnPrimaryContainer
 
-        // [<]  Stop 3 of 12 · ETA 10:42  [>]
+        // [<]  Stop 3 of 12 · ETA 10:42 · ID 7 · 2 pkgs  [>]
+        //      9 left · 1 h 05 min · 14.2 mi · done by 3:10 PM
         val top = ctx.horizontal()
-        top.addView(ctx.iconButton(R.drawable.ic_chevron_left, "Previous stop") { host.prev() })
+        val chevron = LinearLayout.LayoutParams(ctx.dp(48), ctx.dp(48))
+        top.addView(ctx.iconButton(R.drawable.ic_chevron_left, "Previous stop") { host.prev() }, chevron)
         val pendingAfter = s.stops.count { it.status == Status.PENDING }
-        top.addWeighted(ctx.label(14f, onCard).apply {
-            gravity = Gravity.CENTER
+        val info = ctx.vertical().apply { setPadding(ctx.dp(4), 0, ctx.dp(4), 0) }
+        info.addFull(ctx.label(14f, onCard, bold = true).apply {
             text = "Stop ${c.optimizedIndex} of ${s.stops.size}" +
                 (if (c.status == Status.PENDING) " · ETA ${ctx.clock(s, sum.projectedEta(c))}" else " · ${c.status.name.lowercase()}") +
-                " · ID ${c.entryNo} · ${totalPackages(s.finder(c).size)}" +
-                "\n$pendingAfter left · ${summaryLine(s, sum, remainingOnly = true)}"
+                " · ID ${c.entryNo} · ${totalPackages(s.finder(c).size)}"
         })
-        top.addView(ctx.iconButton(R.drawable.ic_chevron_right, "Next stop") { host.next() })
+        info.addFull(ctx.label(13f, onCard).apply { text = "$pendingAfter left · ${summaryLine(s, sum, remainingOnly = true)}" })
+        top.addWeighted(info)
+        top.addView(ctx.iconButton(R.drawable.ic_chevron_right, "Next stop") { host.next() }, LinearLayout.LayoutParams(ctx.dp(48), ctx.dp(48)))
         body.addFull(top)
 
         val (l1, l2) = splitAddress(c.address)
@@ -279,7 +284,8 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
 
         // Package finder: what to grab and where it is in the vehicle.
         val pkgs = s.finder(c)
-        if (pkgs.isNotEmpty()) {
+        // Nothing to find (no shelf set, no scanned label): the row would only say "no location set", so leave it out.
+        if (pkgs.any { it.truckZone != null || Barcodes.lastFour(it) != null }) {
             val pf = ctx.vertical(padH = 12, padV = 8).apply { background = ctx.roundRect(M.attr.colorSurface, 14) }
             val head = ctx.horizontal().apply { isClickable = true }
             head.addWeighted(ctx.label(11f, M.attr.colorOnSurfaceVariant, bold = true).apply { text = "PACKAGE FINDER" })
@@ -293,7 +299,7 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
             for (p in pkgs) {
                 // "45-1 · Back Left Shelf" with the last four of its tracking number as a badge on the right.
                 val line = ctx.horizontal()
-                line.addWeighted(ctx.label(15f).apply { text = "${p.id}  ·  ${p.truckZone ?: "no location set"}" })
+                line.addWeighted(ctx.label(15f).apply { text = "Pkg ${p.id}  ·  ${p.truckZone ?: "no shelf set"}" })
                 Barcodes.lastFour(p)?.let { line.addView(ctx.lastFourBadge(it)) }
                 lines.addFull(line, topDp = 4)
             }

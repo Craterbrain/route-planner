@@ -39,9 +39,9 @@ class SettingsFlow(
             addressInfo = AddressPack.summary(act) ?: "No address data. Import a Tennessee addresses.sqlite to look up house addresses offline.",
             addressAttribution = AddressPack.meta(act)["attribution"],
             recentCount = prefs.recents.size,
-            storageInfo = "The app is using " + app.routeplanner.core.Pruning.size(Storage.usage(act).total) + " of storage (not counting offline maps).",
+            storageInfo = "The app is using " + app.routeplanner.core.Pruning.size(Storage.usage(act).total) + " of storage (not counting offline maps). Clearing app data or uninstalling erases saved routes, offline maps, road data and address data; share a route first to keep a copy.",
             diagnosticsInfo = CrashLog.summary(act),
-            roadsInfo = if (tiles.exists()) "Offline road data installed (${tiles.length() / 1_000_000} MB)." +
+            roadsInfo = if (tiles.exists()) "Offline road data installed (${tiles.length() / 1_000_000} MB unpacked)." +
                 (if (prefs.dataUpdateState.isNotEmpty()) " A newer build is available: tap Download offline data to update." else "")
             else "No offline road data: times come from the server below, or straight-line estimates.",
         )

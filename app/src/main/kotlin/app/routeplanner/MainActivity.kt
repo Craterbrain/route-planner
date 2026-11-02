@@ -175,8 +175,15 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         val sheetParams = CoordinatorLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         sheetParams.behavior = BottomSheetBehavior<LinearLayout>()
         root.addView(sheet.view, sheetParams)
+        // Solid strip behind the system navigation bar, in the sheet's colour: whatever the sheet holds below its peek
+        // (the stop list, the start row) must not show through the back / home / recents icons.
+        navScrim = android.view.View(this).apply {
+            setBackgroundColor(color(M.attr.colorSurfaceContainerLow))
+            elevation = dpf(8f)
+        }
+        root.addView(navScrim, CoordinatorLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0).apply { gravity = Gravity.BOTTOM })
         // Search suggestions float above the sheet, under the search bar.
-        searchPanel = SearchPanel(this, search, { actions.addressSearch() }, onAddAnyway = { text -> scanFlow.addAnyway(text) }) { s, typed ->
+        searchPanel = SearchPanel(this, search, { actions.addressSearch() }, onAddAnyway = { text -> scanFlow.addAnyway(text) }, origin = { actions.searchBias() }) { s, typed ->
             hideKeyboard()
             val p = s.point ?: return@SearchPanel
             prefs.addRecent(s)
@@ -222,6 +229,8 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
             (topBar.layoutParams as ViewGroup.MarginLayoutParams).setMargins(bars.left + dp(12), bars.top + dp(8), bars.right + dp(12), 0)
             topBar.requestLayout()
             sheet.setBottomInset(bars.bottom)
+            navScrim.layoutParams.height = bars.bottom
+            navScrim.requestLayout()
             root.post { updateSheetGeometry() }
             WindowInsetsCompat.CONSUMED
         }
@@ -333,15 +342,16 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         val s = SessionStore.session
         val hasPending = s?.stops?.any { it.status == Status.PENDING } == true
         PopupMenu(this, anchor).apply {
-            menu.add(0, 1, 0, "Import spreadsheet (CSV)")
+            // While driving, leave out what would reorder or replace the route under the driver's thumb.
+            val driving = s?.started == true && !s.done
+            if (!driving) menu.add(0, 1, 0, "Import spreadsheet (CSV)")
             menu.add(0, 11, 0, "Scan label")
             if (s != null && s.packages.isNotEmpty()) menu.add(0, 12, 0, "Check a parcel (scan)")
-            if (hasPending) menu.add(0, 2, 0, "Optimize route")
+            if (hasPending && !driving) menu.add(0, 2, 0, "Optimize route")
             if (hasPending) menu.add(0, 3, 0, "Update times (keep order)")
-            if (hasPending) menu.add(0, 4, 0, "Reverse route")
+            if (hasPending && !driving) menu.add(0, 4, 0, "Reverse route")
             if (map != null && s != null) menu.add(0, 5, 0, "Show whole route")
-            menu.add(0, 9, 0, "Permissions & network")
-            menu.add(0, 7, 0, "Settings")
+            menu.add(0, 7, 0, "Settings") // permissions & network are inside Settings
             setOnMenuItemClickListener {
                 when (it.itemId) {
                     1 -> importCsv()
@@ -475,7 +485,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         updateRoadPath(s, start)
         search.hint = when {
             searchingEnd -> "Search the ending address"
-            searchingStart || start == null -> "Search your starting address"
+            searchingStart || start == null -> "Search start address"
             else -> "Add a stop"
         }
         val curId = s?.current?.id?.takeIf { s.started }
@@ -836,6 +846,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
     }
 
     private var collapseWanted = false
+    private lateinit var navScrim: android.view.View
     private var askedOverlayPermission = false
     private var resumedOverlay = false
 

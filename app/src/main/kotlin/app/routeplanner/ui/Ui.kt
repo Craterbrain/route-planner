@@ -113,8 +113,15 @@ fun badgeText(s: Stop): String = when (s.status) {
 }
 
 /** Wall-clock time (user's 12/24 h setting) of [sec] on the session's route clock. */
-fun Context.clock(s: RouteSession, sec: Int): String =
-    android.text.format.DateFormat.getTimeFormat(this).format(Date(s.startMs + sec * 1000L))
+fun Context.clock(s: RouteSession, sec: Int): String {
+    val at = Date(s.startMs + sec * 1000L)
+    val text = android.text.format.DateFormat.getTimeFormat(this).format(at)
+    // Past midnight on a long route: say which day, so "done by 4:17 PM" can't be mistaken for today.
+    val a = java.util.Calendar.getInstance().apply { timeInMillis = s.startMs }
+    val b = java.util.Calendar.getInstance().apply { time = at }
+    val sameDay = a.get(java.util.Calendar.YEAR) == b.get(java.util.Calendar.YEAR) && a.get(java.util.Calendar.DAY_OF_YEAR) == b.get(java.util.Calendar.DAY_OF_YEAR)
+    return if (sameDay) text else java.text.SimpleDateFormat("EEE", Locale.getDefault()).format(at) + " " + text
+}
 
 /** Miles in the US, UK, Liberia and Myanmar; kilometres elsewhere. */
 fun imperialUnits(): Boolean = Locale.getDefault().country in setOf("US", "GB", "LR", "MM")
@@ -150,8 +157,8 @@ fun Context.windowLabel(s: RouteSession, w: LongRange): String {
 const val WINDOW_OPEN_START = -10_000_000L
 const val WINDOW_OPEN_END = 10_000_000L
 
-/** "Total packages: 2". Every address holds at least one package. */
-fun totalPackages(n: Int) = "Total packages: $n"
+/** "2 pkgs". Every address holds at least one package. */
+fun totalPackages(n: Int) = if (n == 1) "1 pkg" else "$n pkgs"
 
 /** The last four characters of a tracking number as a badge: primary fill, bold, easy to match against the label. */
 fun Context.lastFourBadge(text: String) = TextView(this).apply {
