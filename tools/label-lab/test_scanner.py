@@ -15,6 +15,7 @@ import argparse, concurrent.futures as cf, json, math, os, re, subprocess, tempf
 ap = argparse.ArgumentParser()
 ap.add_argument("--passes", type=int, default=10); ap.add_argument("--labels", type=int, default=25)
 ap.add_argument("--warp", default="1"); ap.add_argument("--dirt", default="1"); ap.add_argument("--soft", default="0.6")
+ap.add_argument("--fade", default="0.8"); ap.add_argument("--streak", default="0.8"); ap.add_argument("--feed", default="0.8")
 ap.add_argument("--seed0", type=int, default=1000); ap.add_argument("--keep")
 a = ap.parse_args()
 
@@ -33,7 +34,7 @@ def meters(a_, b_, c_, d_):
 def render(seed):
     png = os.path.join(work, f"label{seed}.png")
     prof = tempfile.mkdtemp()
-    url = f"http://localhost:8765/?seed={seed}&shot&warp={a.warp}&dirt={a.dirt}&soft={a.soft}"
+    url = f"http://localhost:8765/?seed={seed}&shot&warp={a.warp}&dirt={a.dirt}&soft={a.soft}&fade={a.fade}&streak={a.streak}&feed={a.feed}"
     subprocess.run(["firefox", "--headless", "--no-remote", "--profile", prof, "--window-size", "800,1240", "--screenshot", png, url], capture_output=True, timeout=180)
     sh("rm", "-rf", prof)
     return png
@@ -85,7 +86,7 @@ for p in range(a.passes):
     totals.append(ok)
     print(f"pass {p + 1}/{a.passes}: {ok}/{a.labels} fully correct (address read {ocr_ok}, located {geo_ok}); route has {stops} stops; {time.time() - t0:.0f}s", flush=True)
 n_all = a.passes * a.labels
-print(f"\nTOTAL {sum(totals)}/{n_all} ({100 * sum(totals) / n_all:.0f}%)  warp {a.warp} dirt {a.dirt} soft {a.soft}")
+print(f"\nTOTAL {sum(totals)}/{n_all} ({100 * sum(totals) / n_all:.0f}%)  warp {a.warp} dirt {a.dirt} soft {a.soft} fade {a.fade} streak {a.streak} feed {a.feed}")
 for f in all_fail[:40]: print("  FAIL", f)
 json.dump(all_fail, open(os.path.join(work, "failures.json"), "w"), indent=1)
 print("files in", work)

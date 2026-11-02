@@ -16,7 +16,7 @@ body { margin: 0; min-height: 100vh; background: #8a6a45; font-family: system-ui
 #label .abs { position: absolute; white-space: nowrap; line-height: 1.05; }
 #label .rule { position: absolute; background: #17171a; }
 #label canvas { position: absolute; }
-#shade, #dirt { position: absolute; inset: 0; pointer-events: none; }
+#shade, #dirt, #defects { position: absolute; inset: 0; pointer-events: none; }
 #foot { font: 11px system-ui; color: #f2e8d8; text-align: center; margin-top: 18px; opacity: .8; }
 
 body.shot #bar, body.shot #foot { display: none; }

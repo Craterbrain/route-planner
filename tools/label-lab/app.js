@@ -94,6 +94,7 @@ function drawLabel(l) {
 function applyDamage() {
   const r = rng(seed * 7919);
   const warp = +$("warp").value, dirt = +$("dirtAmt").value, soft = +$("soft").value;
+  const fade = +$("fade").value, streak = +$("streak").value, feed = +$("feed").value;
   const sheet = $("sheet"), paper = $("paper");
   // Slight perspective as if photographed by hand.
   const rx = (r() - .5) * 9 * warp, ry = (r() - .5) * 9 * warp, rz = (r() - .5) * 5 * warp;
@@ -116,6 +117,55 @@ function applyDamage() {
   $("shade").style.boxShadow = `inset 0 0 ${(30 + r() * 30).toFixed(0)}px rgba(60,40,10,${(0.18 * warp).toFixed(3)})`;
 
   drawDirt(r, dirt);
+  printerDefects(r, fade, streak, feed);
+}
+
+// ---- Printer defects ------------------------------------------------------------------------------------------
+
+function printerDefects(r, fade, streak, feed) {
+  const label = $("label"), cv = $("defects"), g = cv.getContext("2d");
+  g.clearRect(0, 0, W, H);
+
+  // Uneven feed: vertical displacement that depends only on the row. Bands compress (bunch) where it falls quickly.
+  const fn = $("feedNoise"), fm = $("feedMap");
+  fn.setAttribute("seed", String(1 + Math.floor(r() * 900)));
+  fn.setAttribute("baseFrequency", `0 ${(0.003 + r() * 0.004).toFixed(4)}`);
+  fm.setAttribute("scale", String(Math.round((14 + r() * 16) * feed * S)));
+  label.style.filter = feed > 0 ? "url(#feedFilter)" : "none";
+
+  // Fade: a worn head prints lighter overall, and some patches almost vanish.
+  const ink = Math.round(23 + 90 * Math.min(1, fade * (0.15 + r() * 0.35)));
+  label.style.color = `rgb(${ink},${ink},${ink + 2})`;
+  const dim = (el, p) => { el.style.opacity = r() < p ? String((0.28 + r() * 0.5).toFixed(2)) : ""; };
+  label.querySelectorAll(".abs").forEach((el) => { el.style.opacity = ""; if (fade > 0) dim(el, 0.12 * fade); });
+  label.querySelectorAll("canvas").forEach((el) => { el.style.opacity = ""; if (fade > 0 && r() < 0.15 * fade) el.style.opacity = String((0.55 + r() * 0.3).toFixed(2)); });
+  if (fade > 0) {
+    // Washed-out zones across the print: horizontal-ish bands where the head ran cold, lighter toward one side.
+    const zones = 1 + Math.floor(r() * 2 * fade);
+    for (let i = 0; i < zones; i++) {
+      const y = r() * H, hgt = (50 + r() * 140) * S / 1.5, x0 = r() * W * 0.5;
+      const grad = g.createLinearGradient(x0, 0, W, 0);
+      const a = Math.min(0.7, (0.25 + r() * 0.3) * fade);
+      grad.addColorStop(0, `rgba(241,241,238,${a})`); grad.addColorStop(1, `rgba(241,241,238,${a * 0.25})`);
+      g.fillStyle = grad; g.fillRect(0, y, W, hgt);
+    }
+  }
+
+  // Dead print-head pixels: thin white vertical lines (some run the full height, some stop part-way) plus a few skipped rows.
+  if (streak > 0) {
+    const n = Math.round((2 + r() * 5) * streak);
+    for (let i = 0; i < n; i++) {
+      const x = r() * W, w = (0.8 + r() * 2.6) * S / 1.5;
+      const y0 = r() < 0.6 ? 0 : r() * H * 0.7, y1 = r() < 0.6 ? H : Math.min(H, y0 + r() * H);
+      g.fillStyle = `rgba(241,241,238,${(0.85 + r() * 0.15).toFixed(2)})`;
+      g.fillRect(x, y0, w, y1 - y0);
+    }
+    const skips = Math.round(r() * 3 * streak);
+    for (let i = 0; i < skips; i++) {
+      const y = r() * H, hgt = (1 + r() * 2.2) * S / 1.5, x0 = r() * W * 0.3;
+      g.fillStyle = "rgba(241,241,238,0.92)"; g.fillRect(x0, y, W - x0 - r() * W * 0.2, hgt);
+    }
+  }
 }
 
 function drawDirt(r, amount) {
@@ -170,14 +220,14 @@ function render() {
 
 $("newAddr").onclick = newAddress;
 $("reroll").onclick = () => { seed = Math.floor(Math.random() * 1e6); applyDamage(); };
-for (const id of ["warp", "dirtAmt", "soft"]) $(id).oninput = applyDamage;
+for (const id of ["warp", "dirtAmt", "soft", "fade", "streak", "feed"]) $(id).oninput = applyDamage;
 addEventListener("keydown", (e) => {
   if (e.target.tagName === "INPUT") return;
   if (e.code === "Space") { e.preventDefault(); newAddress(); }
   else if (e.key === "r" || e.key === "R") $("reroll").click();
 });
 const qs = new URLSearchParams(location.search);
-for (const [k, id] of [["warp", "warp"], ["dirt", "dirtAmt"], ["soft", "soft"]]) if (qs.has(k)) $(id).value = qs.get(k);
+for (const [k, id] of [["warp", "warp"], ["dirt", "dirtAmt"], ["soft", "soft"], ["fade", "fade"], ["streak", "streak"], ["feed", "feed"]]) if (qs.has(k)) $(id).value = qs.get(k);
 if (qs.has("shot")) document.body.classList.add("shot");
 if (qs.has("fit")) {      // scale the label to fill the window height, as a phone camera would like it
   const fit = () => { const k = Math.min((innerHeight - 40) / 1100, innerWidth / 760); $("scene").style.transform = `scale(${k})`; $("scene").style.transformOrigin = "top center"; };
@@ -185,5 +235,5 @@ if (qs.has("fit")) {      // scale the label to fill the window height, as a pho
 }
 if (qs.has("remote")) { let seen = null; setInterval(async () => { const c = await (await fetch("/api/cmd", { cache: "no-store" })).json(); if (seen !== null && c.n !== seen) newAddress(); seen = c.n; }, 700); }   // ?remote: the test driver advances labels
 if (qs.has("auto")) setInterval(() => newAddress(), Math.max(3, +qs.get("auto")) * 1000);   // ?auto=SECONDS: a new label on a timer
-if (/clean/.test(location.search)) for (const id of ["warp", "dirtAmt", "soft"]) $(id).value = 0; // ?clean: undamaged label
+if (/clean/.test(location.search)) for (const id of ["warp", "dirtAmt", "soft", "fade", "streak", "feed"]) $(id).value = 0; // ?clean: undamaged label
 if (window.__first) { current = window.__first; seed = qs.has("seed") ? +qs.get("seed") * 31 + 7 : Math.floor(Math.random() * 1e6); render(); } else newAddress();
