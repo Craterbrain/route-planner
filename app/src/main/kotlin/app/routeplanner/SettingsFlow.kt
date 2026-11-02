@@ -22,12 +22,15 @@ class SettingsFlow(
     private val reqAddresses: Int,
     private val reqTiles: Int,
     private val downloadRoads: () -> Unit,
+    private val floatingChanged: (Boolean) -> Unit,
 ) {
     fun show() {
         val tiles = Routing.tilesFile(act)
         val model = Dialogs.SettingsModel(
             waze = prefs.navApp == NavApp.WAZE,
             autoNavigate = prefs.autoNavigate,
+            themeMode = prefs.themeMode,
+            floatingButton = prefs.floatingButton,
             showMap = prefs.showMap,
             serverUrl = prefs.valhallaUrl,
             geocoderUrl = prefs.geocoderUrl,
@@ -57,11 +60,14 @@ class SettingsFlow(
         ) { m ->
             prefs.navApp = if (m.waze) NavApp.WAZE else NavApp.GOOGLE
             prefs.autoNavigate = m.autoNavigate
+            if (m.floatingButton != prefs.floatingButton) { prefs.floatingButton = m.floatingButton; floatingChanged(m.floatingButton) }
             prefs.valhallaUrl = m.serverUrl
             prefs.geocoderUrl = m.geocoderUrl
             prefs.googleSuggest = m.googleSuggest
             SessionStore.session?.let { s -> s.navApp = prefs.navApp; s.autoNavigate = m.autoNavigate; SessionStore.commit(act) }
-            if (m.showMap != prefs.showMap) { prefs.showMap = m.showMap; act.recreate() }
+            val themeChanged = m.themeMode != prefs.themeMode
+            if (themeChanged) prefs.themeMode = m.themeMode
+            if (m.showMap != prefs.showMap) { prefs.showMap = m.showMap; act.recreate() } else if (themeChanged) act.recreate()
         }
     }
 

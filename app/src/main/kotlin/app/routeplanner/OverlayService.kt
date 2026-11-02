@@ -25,7 +25,12 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.app.ServiceCompat
+import app.routeplanner.ui.badgeColors
+import app.routeplanner.ui.badgeText
 import app.routeplanner.ui.dp
+import app.routeplanner.ui.label
+import app.routeplanner.ui.roundRect
+import app.routeplanner.ui.totalPackages
 import com.google.android.material.R as M
 import kotlin.math.abs
 
@@ -33,7 +38,8 @@ import kotlin.math.abs
  * Floating action button drawn over the navigation app. Collapsed it is a
  * single round button that can be dragged and snaps to the nearest screen
  * edge (position remembered). Tapping it expands a small panel with the
- * current stop and Prev / Delivered / Failed / Next, plus Open app and Close.
+ * current stop (number, address, ID, packages; tap it to open that stop in the app) and Prev / Delivered / Failed / Next.
+ * Dragging it to the circle with an X at the bottom centre closes it.
  * Hidden while Route Planner itself is on screen, where the next-stop card
  * does the same job.
  */
@@ -44,11 +50,16 @@ class OverlayService : Service() {
     private var root: LinearLayout? = null
     private lateinit var fab: FrameLayout
     private lateinit var panel: LinearLayout
-    private lateinit var label: TextView
+    private lateinit var info: LinearLayout
     private lateinit var lp: WindowManager.LayoutParams
     private var expanded = false
     private val main = Handler(Looper.getMainLooper())
-    private val refresh = { label.text = describe() }
+    private val refresh = {
+        // The button belongs to a route in progress: it goes when the route is stopped, finished or cleared.
+        if (!inProgress()) stopSelf() else bindInfo()
+    }
+
+    private fun inProgress() = SessionStore.session?.let { it.started && !it.done } == true
     private val visibility = { main.post { applyVisibility() }; Unit }
 
     override fun onBind(i: Intent?): IBinder? = null
@@ -75,6 +86,7 @@ class OverlayService : Service() {
         prefs = Prefs(this)
         t = themed() // app theme + the user's Material You colors
         SessionStore.load(this)
+        if (!inProgress()) { running = false; stopSelf(); return }
         build()
         SessionStore.observe(refresh)
         visibilityListeners += visibility
@@ -85,11 +97,36 @@ class OverlayService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun describe(): String {
-        val s = SessionStore.session ?: return "No route"
-        val c = s.current ?: return "Route done"
-        if (s.done) return "All stops handled"
-        return "#${c.optimizedIndex}  ${c.address.substringBefore(',')}"
+    /** The current stop: number badge and the street address (big), then its ID badge and package count. Tapping opens the app on that stop. */
+    private fun bindInfo() {
+        info.removeAllViews()
+        val s = SessionStore.session
+        val c = s?.current
+        if (s == null || c == null || s.done) {
+            info.addView(t.label(15f).apply { text = if (s?.done == true) "All stops handled" else "No route" })
+            return
+        }
+        val colors = t.badgeColors(c, true)
+        val top = LinearLayout(t).apply { gravity = Gravity.CENTER_VERTICAL }
+        top.addView(TextView(t).apply {
+            text = badgeText(c); textSize = 15f; gravity = Gravity.CENTER
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(colors.text)
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(colors.fill) }
+        }, LinearLayout.LayoutParams(t.dp(38), t.dp(38)).apply { marginEnd = t.dp(10) })
+        top.addView(t.label(21f, bold = true, lines = 2).apply { text = c.address.substringBefore(',') },
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        info.addView(top)
+        val meta = LinearLayout(t).apply { gravity = Gravity.CENTER_VERTICAL }
+        meta.addView(TextView(t).apply {
+            text = "ID ${c.entryNo}"; textSize = 13f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(t.color(M.attr.colorOnTertiaryContainer))
+            background = t.roundRect(M.attr.colorTertiaryContainer, 10)
+            setPadding(t.dp(8), t.dp(2), t.dp(8), t.dp(2))
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginEnd = t.dp(8) })
+        meta.addView(t.label(14f, M.attr.colorOnSurfaceVariant).apply { text = totalPackages(s.finder(c).size) })
+        info.addView(meta, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = t.dp(6); marginStart = t.dp(48) })
     }
 
     private fun circle(colorAttr: Int) = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(t.color(colorAttr)) }
@@ -104,15 +141,6 @@ class OverlayService : Service() {
         setOnClickListener { onClick() }
     }
 
-    private fun textAction(text: String, onClick: () -> Unit) = TextView(t).apply {
-        this.text = text
-        textSize = 14f
-        setTextColor(t.color(M.attr.colorPrimary))
-        gravity = Gravity.CENTER
-        setPadding(t.dp(12), t.dp(8), t.dp(12), t.dp(8))
-        setOnClickListener { onClick() }
-    }
-
     private fun build() {
         fab = FrameLayout(t).apply {
             background = circle(M.attr.colorPrimaryContainer)
@@ -123,10 +151,14 @@ class OverlayService : Service() {
                 setColorFilter(t.color(M.attr.colorOnPrimaryContainer))
             }, FrameLayout.LayoutParams(t.dp(28), t.dp(28), Gravity.CENTER))
         }
-        label = TextView(t).apply {
-            setTextColor(t.color(M.attr.colorOnSurface)); textSize = 14f; gravity = Gravity.CENTER
-            maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
-            setPadding(t.dp(8), 0, t.dp(8), t.dp(4))
+        info = LinearLayout(t).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(t.dp(6), t.dp(2), t.dp(6), t.dp(10))
+            setOnClickListener {
+                startActivity(Intent(this@OverlayService, MainActivity::class.java).setAction(MainActivity.ACTION_OPEN_STOP)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+                setExpanded(false)
+            }
         }
         val actions = LinearLayout(t).apply { gravity = Gravity.CENTER }
         fun add(v: View) = actions.addView(v, LinearLayout.LayoutParams(t.dp(48), t.dp(48)).apply { setMargins(t.dp(4), 0, t.dp(4), 0) })
@@ -143,21 +175,14 @@ class OverlayService : Service() {
         add(action(R.drawable.ic_chevron_right, "Next stop", M.attr.colorSecondaryContainer, M.attr.colorOnSecondaryContainer) {
             SessionStore.act(this) { next(); null }
         })
-        val bottom = LinearLayout(t).apply { gravity = Gravity.CENTER }
-        bottom.addView(textAction("Open app") {
-            startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
-            setExpanded(false)
-        })
-        bottom.addView(textAction("Close") { stopSelf() })
         panel = LinearLayout(t).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(t.dp(8), t.dp(10), t.dp(8), t.dp(4))
+            setPadding(t.dp(8), t.dp(10), t.dp(8), t.dp(10))
             background = GradientDrawable().apply { cornerRadius = t.dp(24).toFloat(); setColor(t.color(M.attr.colorSurfaceContainerHigh)) }
             elevation = t.dp(6).toFloat()
             visibility = View.GONE
-            addView(label, LinearLayout.LayoutParams(t.dp(240), LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(info, LinearLayout.LayoutParams(t.dp(280), LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(actions)
-            addView(bottom)
         }
         val r = LinearLayout(t).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -167,7 +192,7 @@ class OverlayService : Service() {
         }
         root = r
         arrange()
-        label.text = describe()
+        bindInfo()
 
         val dm = resources.displayMetrics
         lp = WindowManager.LayoutParams(
@@ -201,7 +226,7 @@ class OverlayService : Service() {
     private fun setExpanded(e: Boolean) {
         expanded = e
         panel.visibility = if (e) View.VISIBLE else View.GONE
-        if (e) label.text = describe()
+        if (e) bindInfo()
     }
 
     private fun applyVisibility() {
@@ -213,6 +238,48 @@ class OverlayService : Service() {
     private fun clampY() {
         val h = resources.displayMetrics.heightPixels
         lp.y = lp.y.coerceIn(t.dp(48), (h * 0.7f).toInt())
+    }
+
+    // ---- Drag-to-close target: a circle with an X at the bottom centre, shown while the button is being dragged ----
+    private var dismissView: FrameLayout? = null
+
+    private fun showDismissTarget() {
+        if (dismissView != null) return
+        val v = FrameLayout(t).apply {
+            background = circle(M.attr.colorSurfaceContainerHighest)
+            elevation = t.dp(6).toFloat()
+            addView(ImageView(t).apply {
+                setImageResource(R.drawable.ic_close)
+                setColorFilter(t.color(M.attr.colorOnSurface))
+            }, FrameLayout.LayoutParams(t.dp(28), t.dp(28), Gravity.CENTER))
+        }
+        val p = WindowManager.LayoutParams(t.dp(64), t.dp(64), WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE, PixelFormat.TRANSLUCENT
+        ).apply { gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL; y = DISMISS_BOTTOM_DP.let { t.dp(it) } }
+        runCatching { wm.addView(v, p); dismissView = v }
+    }
+
+    private fun hideDismissTarget() {
+        dismissView?.let { runCatching { wm.removeView(it) } }
+        dismissView = null
+        overTarget = false
+    }
+
+    private var overTarget = false
+
+    /** True while the finger is over the close target; the target grows and turns red to say so. */
+    private fun updateDismissTarget(rawX: Float, rawY: Float): Boolean {
+        val v = dismissView ?: return false
+        val dm = resources.displayMetrics
+        val cx = dm.widthPixels / 2f
+        val cy = dm.heightPixels - t.dp(DISMISS_BOTTOM_DP + 32)
+        val near = Math.hypot((rawX - cx).toDouble(), (rawY - cy).toDouble()) < t.dp(80)
+        if (near != overTarget) {
+            overTarget = near
+            v.background = circle(if (near) M.attr.colorErrorContainer else M.attr.colorSurfaceContainerHighest)
+            v.animate().scaleX(if (near) 1.3f else 1f).scaleY(if (near) 1.3f else 1f).setDuration(120).start()
+        }
+        return near
     }
 
     private inner class DragTouch : View.OnTouchListener {
@@ -230,15 +297,19 @@ class OverlayService : Service() {
                 MotionEvent.ACTION_MOVE -> {
                     val dx = e.rawX - downX
                     val dy = e.rawY - downY
-                    if (!dragging && (abs(dx) > slop || abs(dy) > slop)) { dragging = true; setExpanded(false) }
+                    if (!dragging && (abs(dx) > slop || abs(dy) > slop)) { dragging = true; setExpanded(false); showDismissTarget() }
                     if (dragging) {
                         lp.y = startY + dy.toInt()
                         lp.x = (startX + if (prefs.fabRight) -dx.toInt() else dx.toInt()).coerceAtLeast(0)
                         wm.updateViewLayout(r, lp)
+                        updateDismissTarget(e.rawX, e.rawY)
                     }
                 }
                 MotionEvent.ACTION_UP -> {
                     if (!dragging) { v.performClick(); setExpanded(!expanded); return true }
+                    val closing = overTarget
+                    hideDismissTarget()
+                    if (closing) { stopSelf(); return true }
                     // Snap to the nearer edge and remember.
                     val right = e.rawX > resources.displayMetrics.widthPixels / 2f
                     if (right != prefs.fabRight) { prefs.fabRight = right; arrange() }
@@ -248,7 +319,7 @@ class OverlayService : Service() {
                     prefs.fabY = lp.y
                     wm.updateViewLayout(r, lp)
                 }
-                MotionEvent.ACTION_CANCEL -> dragging = false
+                MotionEvent.ACTION_CANCEL -> { dragging = false; hideDismissTarget() }
             }
             return true
         }
@@ -256,6 +327,7 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         running = false
+        hideDismissTarget()
         SessionStore.unobserve(refresh)
         visibilityListeners -= visibility
         root?.let { runCatching { wm.removeView(it) } }
@@ -265,6 +337,7 @@ class OverlayService : Service() {
 
     companion object {
         const val ACTION_STOP = "app.routeplanner.STOP_OVERLAY"
+        private const val DISMISS_BOTTOM_DP = 56
 
         /** True while the floating button is up (for the menu toggle). */
         @Volatile var running = false

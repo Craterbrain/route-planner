@@ -66,7 +66,18 @@ class RouteSheet(private val ctx: Context, private val host: RouteHost) {
     }
 
     /** Bottom system-bar inset, so the last row isn't under the navigation bar. */
-    fun setBottomInset(px: Int) = list.setPadding(ctx.dp(8), ctx.dp(4), ctx.dp(8), ctx.dp(8) + px)
+    fun setBottomInset(px: Int) { inset = px; applyListPadding() }
+
+    private var inset = 0
+    private var overflow = 0
+
+    /**
+     * The sheet is as tall as its parent but sits below the search bar when expanded, so its bottom hangs off the screen
+     * by that much; pad the list by the overhang so the last stops can scroll into view.
+     */
+    fun setOverflow(px: Int) { if (px != overflow) { overflow = px; applyListPadding() } }
+
+    private fun applyListPadding() = list.setPadding(ctx.dp(8), ctx.dp(4), ctx.dp(8), ctx.dp(8) + inset + overflow)
 
     fun render(s: RouteSession?, start: RouteStart?, end: EndMode) {
         finderAnim?.cancel()

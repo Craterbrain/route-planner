@@ -47,9 +47,11 @@ import java.io.File
  */
 class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.Listener {
     private lateinit var prefs: Prefs
+
+    override fun attachBaseContext(base: Context) = super.attachBaseContext(ThemeMode.wrap(base)) // Settings → Theme
     private val scanFlow by lazy { ScanFlow(this, actions, this, { search }, { currentStart()?.point }, { map != null }, ::pickDropOff) }
     private val settings by lazy {
-        SettingsFlow(this, prefs, this, { showPermissions() }, { offlineMaps.show() }, { storageFlow.show() }, { Welcome.show(this) }, ::pickDocument, REQ_ADDRESSES, REQ_TILES, { roadDownload.show(blocking = false) })
+        SettingsFlow(this, prefs, this, { showPermissions() }, { offlineMaps.show() }, { storageFlow.show() }, { Welcome.show(this) }, ::pickDocument, REQ_ADDRESSES, REQ_TILES, { roadDownload.show(blocking = false) }, ::floatingSettingChanged)
     }
     private val roadDownload by lazy {
         RoadDownloadFlow(this, {
@@ -125,6 +127,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
 
     companion object {
         const val ACTION_FAIL = "app.routeplanner.FAIL"
+        const val ACTION_OPEN_STOP = "app.routeplanner.OPEN_STOP"
         private const val REQ_IMPORT = 1
         private const val REQ_TILES = 3
         private const val REQ_VOICE = 4
@@ -191,6 +194,12 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
             peekHeight = dp(160)
             state = if (map == null) BottomSheetBehavior.STATE_EXPANDED else BottomSheetBehavior.STATE_COLLAPSED
         }
+        val fitList = { sheet.setOverflow((sheet.view.bottom - root.height).coerceAtLeast(0)) }
+        behavior.addBottomSheetCallback(object : BottomSheetBehavior.BottomSheetCallback() {
+            override fun onStateChanged(v: android.view.View, newState: Int) = fitList()
+            override fun onSlide(v: android.view.View, offset: Float) = fitList()
+        })
+        sheet.view.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> root.post { fitList() } }
         sheet.header.addOnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
             if (bottom - top != oldBottom - oldTop) root.post { updateSheetGeometry() }
         }
@@ -323,7 +332,6 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
             if (hasPending) menu.add(0, 3, 0, "Update times (keep order)")
             if (hasPending) menu.add(0, 4, 0, "Reverse route")
             if (map != null && s != null) menu.add(0, 5, 0, "Show whole route")
-            menu.add(0, 6, 0, "Floating button").apply { isCheckable = true; isChecked = OverlayService.running }
             menu.add(0, 9, 0, "Permissions & network")
             menu.add(0, 7, 0, "Settings")
             setOnMenuItemClickListener {
@@ -333,7 +341,6 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
                     3 -> actions.replan(optimize = false, showBusy = true)
                     4 -> SessionStore.session?.let { r -> r.reverse(); SessionStore.commit(this@MainActivity); update() }
                     5 -> map?.frameAll()
-                    6 -> toggleOverlay()
                     7 -> settings.show()
                     9 -> showPermissions()
                     11 -> scanLabel()
@@ -353,6 +360,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
 
     private fun handleIntent(i: Intent) {
         if (i.action == ACTION_FAIL) SessionStore.session?.current?.let { fail(it.id) }
+        if (i.action == ACTION_OPEN_STOP) { setIntent(Intent()); SessionStore.session?.current?.let { openStop(it.id) } }
         // A CSV shared or opened from another app (a route from another phone, or an address list).
         RouteSharing.uriFrom(i)?.let { uri -> setIntent(Intent()); actions.importRouteFile(uri) }
     }
@@ -372,6 +380,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
     override fun onStart() {
         super.onStart()
         roadKey = null // try the road path again (road data may have been imported since)
+        if (!resumedOverlay) { resumedOverlay = true; if (SessionStore.session?.started == true) startFloatingButton() } // reopened mid-route
         if (!firstRun) window.decorView.post { maybeAskRoads() } // first launch asks after the welcome and permissions
         map?.onStart()
         SessionStore.observe(refresh)
@@ -548,6 +557,7 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         update() // ETAs from now
         if (currentStart()?.live == true) refreshLiveStart()
         behavior.state = BottomSheetBehavior.STATE_COLLAPSED
+        startFloatingButton()
     }
 
     /** Stop: leave driving mode for the planning screen. Nothing is lost; the snackbar can resume. */
@@ -816,13 +826,25 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         }.onFailure { Toast.makeText(this, "No camera app available", Toast.LENGTH_SHORT).show() }
     }
 
-    /** ⋮ → Floating button: a real on/off toggle. */
-    private fun toggleOverlay() {
-        if (OverlayService.running) { OverlayService.stop(this); snack("Floating button off"); return }
+    private var askedOverlayPermission = false
+    private var resumedOverlay = false
+
+    /** Settings → Floating button toggled. Off removes the button now; on brings it up if a route is running. */
+    private fun floatingSettingChanged(on: Boolean) {
+        if (!on) { OverlayService.stop(this); snack("Floating button off"); return }
+        if (SessionStore.session?.started == true) startFloatingButton(askPermission = true)
+        else snack("Floating button on: it shows when you start a route")
+    }
+
+    /** Brings the floating button up when the setting is on, asking for "display over other apps" (once per launch) if needed. */
+    private fun startFloatingButton(askPermission: Boolean = false) {
+        if (!prefs.floatingButton || OverlayService.running) return
         if (!Settings.canDrawOverlays(this)) {
+            if (!askPermission && askedOverlayPermission) return
+            askedOverlayPermission = true
             MaterialAlertDialogBuilder(this)
                 .setTitle("Allow display over other apps")
-                .setMessage("The floating button sits on top of Google Maps or Waze. Android only grants this in its Settings: on the next screen, find Route Planner and turn on \"Allow display over other apps\", then come back.")
+                .setMessage("The floating button sits on top of Google Maps or Waze. Android only grants this in its Settings: on the next screen, find Route Planner and turn on \"Allow display over other apps\", then come back. You can turn the button off in Settings.")
                 .setPositiveButton("Open Settings") { _, _ ->
                     overlayWanted = true
                     startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
@@ -838,7 +860,6 @@ class MainActivity : Activity(), RouteHost, RouteActions.Feedback, RouteMap.List
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), PermissionsSheet.REQ)
         OverlayService.start(this)
-        snack("Floating button on: it shows over your navigation app. Tap it for actions, drag to move.")
     }
 
     // ---- Offline maps (the dialogs live in OfflineMapsFlow) ---------------------

@@ -49,6 +49,8 @@ import java.util.concurrent.Executors
  * The ML Kit models are the bundled ones, so scanning works offline.
  */
 class ScanActivity : AppCompatActivity() {
+    override fun attachBaseContext(newBase: android.content.Context) = super.attachBaseContext(ThemeMode.wrap(newBase)) // Settings → Theme
+
     private val analysisExecutor = Executors.newSingleThreadExecutor()
     // Each recognizer is created only when a mode needs it.
     private val barcodes by lazy { BarcodeScanning.getClient() }

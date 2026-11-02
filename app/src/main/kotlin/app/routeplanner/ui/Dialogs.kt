@@ -8,6 +8,7 @@ import android.widget.LinearLayout
 import android.widget.NumberPicker
 import android.widget.ScrollView
 import app.routeplanner.R
+import app.routeplanner.ThemeMode
 import app.routeplanner.core.EndMode
 import app.routeplanner.core.RouteEnd
 import app.routeplanner.core.FailReason
@@ -208,6 +209,8 @@ object Dialogs {
     class SettingsModel(
         var waze: Boolean,
         var autoNavigate: Boolean,
+        var themeMode: String,
+        var floatingButton: Boolean,
         var showMap: Boolean,
         var serverUrl: String,
         var geocoderUrl: String,
@@ -227,11 +230,23 @@ object Dialogs {
         val box = ctx.vertical(padH = 24, padV = 8)
         box.addFull(ctx.button("Permissions & network…", M.attr.materialButtonOutlinedStyle) { openPermissions() }, bottomDp = 4)
         box.addFull(ctx.button("How it works", M.attr.materialButtonOutlinedStyle) { showTips() }, bottomDp = 8)
+        box.addFull(ctx.label(12f, M.attr.colorPrimary, bold = true).apply { text = "THEME" })
+        val labels = listOf("System", "Light", "Dark")
+        val theme = toggleGroup(ctx, labels, labels[listOf(ThemeMode.SYSTEM, ThemeMode.LIGHT, ThemeMode.DARK).indexOf(m.themeMode).coerceAtLeast(0)]).apply { isSelectionRequired = true }
+        box.addFull(theme, topDp = 4, bottomDp = 8)
         box.addFull(ctx.label(12f, M.attr.colorPrimary, bold = true).apply { text = "NAVIGATION" })
         val nav = toggleGroup(ctx, listOf("Google Maps", "Waze"), if (m.waze) "Waze" else "Google Maps").apply { isSelectionRequired = true }
         box.addFull(nav, topDp = 4)
         val auto = MaterialSwitch(ctx).apply { text = "Open navigation after each stop"; isChecked = m.autoNavigate }
         box.addFull(auto, topDp = 4)
+        box.addFull(ctx.label(13f, M.attr.colorOnSurfaceVariant).apply {
+            text = "After you mark a stop Delivered or Failed, your navigation app opens straight away with directions to the next stop. Off: you tap Navigate yourself."
+        })
+        val floating = MaterialSwitch(ctx).apply { text = "Floating button"; isChecked = m.floatingButton }
+        box.addFull(floating, topDp = 4)
+        box.addFull(ctx.label(13f, M.attr.colorOnSurfaceVariant).apply {
+            text = "A small button over Google Maps or Waze while a route is running, to mark Delivered or Failed without switching apps. Needs \"Display over other apps\"."
+        })
 
         box.addFull(ctx.label(12f, M.attr.colorPrimary, bold = true).apply { text = "MAP" }, topDp = 16)
         val map = MaterialSwitch(ctx).apply { text = "Show map"; isChecked = m.showMap }
@@ -294,16 +309,25 @@ object Dialogs {
         })
         box.addFull(ctx.button("Share diagnostic log", M.attr.materialButtonOutlinedStyle) { shareDiagnostics() }, topDp = 4)
         box.addFull(ctx.button("Clear crash records", M.attr.borderlessButtonStyle) { clearDiagnostics() })
+        // Every change applies as it is made (no Save button). Typed text is taken when the field loses focus and when the dialog closes.
+        val apply = {
+            m.waze = nav.value() == "Waze"
+            m.autoNavigate = auto.isChecked
+            m.themeMode = listOf(ThemeMode.SYSTEM, ThemeMode.LIGHT, ThemeMode.DARK)[labels.indexOf(theme.value() ?: "System").coerceAtLeast(0)]
+            m.floatingButton = floating.isChecked
+            m.showMap = map.isChecked
+            m.serverUrl = url.text.toString()
+            m.geocoderUrl = geo.text.toString()
+            m.googleSuggest = google.isChecked
+            onSave(m)
+        }
+        val groupChanged = MaterialButtonToggleGroup.OnButtonCheckedListener { _, _, checked -> if (checked) apply() }
+        nav.addOnButtonCheckedListener(groupChanged)
+        theme.addOnButtonCheckedListener(groupChanged)
+        for (sw in listOf(auto, floating, map, google)) sw.setOnCheckedChangeListener { _, _ -> apply() }
+        for (f in listOf(url, geo)) f.setOnFocusChangeListener { _, focused -> if (!focused) apply() }
         MaterialAlertDialogBuilder(ctx).setTitle("Settings").setView(ScrollView(ctx).apply { addView(box) })
-            .setPositiveButton("Save") { _, _ ->
-                m.waze = nav.value() == "Waze"
-                m.autoNavigate = auto.isChecked
-                m.showMap = map.isChecked
-                m.serverUrl = url.text.toString()
-                m.geocoderUrl = geo.text.toString()
-                m.googleSuggest = google.isChecked
-                onSave(m)
-            }
+            .setOnDismissListener { apply() }
             .setNegativeButton("Close", null).show()
     }
 }

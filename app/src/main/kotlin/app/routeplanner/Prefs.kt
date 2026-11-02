@@ -34,6 +34,16 @@ class Prefs(ctx: Context) {
         get() = sp.getString("dataUpdateState", "") ?: ""
         set(v) = sp.edit().putString("dataUpdateState", v).apply()
 
+    /** Show the floating Delivered / Failed button over the navigation app while a route is running. On by default. */
+    var floatingButton: Boolean
+        get() = sp.getBoolean("floatingButton", true)
+        set(v) = sp.edit().putBoolean("floatingButton", v).apply()
+
+    /** "system", "light" or "dark" (see [ThemeMode]). */
+    var themeMode: String
+        get() = sp.getString("themeMode", ThemeMode.SYSTEM) ?: ThemeMode.SYSTEM
+        set(v) = sp.edit().putString("themeMode", v).apply()
+
     var navApp: NavApp
         get() = runCatching { NavApp.valueOf(sp.getString("navApp", "")!!) }.getOrDefault(NavApp.GOOGLE)
         set(v) = sp.edit().putString("navApp", v.name).apply()
