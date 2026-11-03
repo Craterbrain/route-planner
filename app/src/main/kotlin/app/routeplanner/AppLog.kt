@@ -11,6 +11,8 @@ import java.util.Locale
  * is ever logged, and an exception is recorded by its class name only.
  */
 object AppLog {
+    /** Set from the Settings switch (default off): when false nothing is written to logcat or kept in memory. */
+    @Volatile var enabled = false
     private const val MAX = 300
     private val lines = ArrayDeque<String>()
     private val clock = SimpleDateFormat("HH:mm:ss", Locale.ROOT)
@@ -20,10 +22,13 @@ object AppLog {
     fun e(msg: String, t: Throwable? = null) = add(Log.ERROR, 'E', msg, t)
 
     private fun add(priority: Int, level: Char, msg: String, t: Throwable?) {
+        if (!enabled) return
         if (t != null) Log.println(priority, NetStatus.TAG, msg + "\n" + Log.getStackTraceString(t)) else Log.println(priority, NetStatus.TAG, msg)
         val line = "${clock.format(Date())} $level $msg" + (t?.let { " [${it.javaClass.simpleName}]" } ?: "")
         synchronized(lines) { lines.addLast(line.take(300)); while (lines.size > MAX) lines.removeFirst() }
     }
+
+    fun clear() = synchronized(lines) { lines.clear() }
 
     fun snapshot(): List<String> = synchronized(lines) { lines.toList() }
 }

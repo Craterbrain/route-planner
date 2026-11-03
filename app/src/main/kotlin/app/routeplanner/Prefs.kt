@@ -100,6 +100,11 @@ class Prefs(ctx: Context) {
         get() = sp.getBoolean("googleSuggest", true)
         set(v) = sp.edit().putBoolean("googleSuggest", v).apply()
 
+    /** Diagnostic logging (the in-app log behind "Share diagnostic log", and logcat). Off unless the user turns it on. */
+    var diagnosticLogging: Boolean
+        get() = sp.getBoolean("diagnosticLogging", false)
+        set(v) = sp.edit().putBoolean("diagnosticLogging", v).apply()
+
     /** Recently picked places (newest first, max [RECENT_MAX]); local suggestions. */
     var recents: List<Suggestion>
         // Local suggestions read this on every keystroke, so it is parsed once and kept in memory (shared by every Prefs instance).

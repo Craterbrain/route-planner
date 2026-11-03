@@ -35,6 +35,7 @@ class SettingsFlow(
             serverUrl = prefs.valhallaUrl,
             geocoderUrl = prefs.geocoderUrl,
             googleSuggest = prefs.googleSuggest,
+            diagnosticLogging = prefs.diagnosticLogging,
             googleTransport = GoogleTransport.description,
             addressInfo = AddressPack.summary(act) ?: "No address data. Import a Tennessee addresses.sqlite to look up house addresses offline.",
             addressAttribution = AddressPack.meta(act)["attribution"],
@@ -64,6 +65,11 @@ class SettingsFlow(
             prefs.valhallaUrl = m.serverUrl
             prefs.geocoderUrl = m.geocoderUrl
             prefs.googleSuggest = m.googleSuggest
+            if (m.diagnosticLogging != prefs.diagnosticLogging) {
+                prefs.diagnosticLogging = m.diagnosticLogging
+                AppLog.enabled = m.diagnosticLogging
+                if (!m.diagnosticLogging) AppLog.clear()
+            }
             SessionStore.session?.let { s -> s.navApp = prefs.navApp; s.autoNavigate = m.autoNavigate; SessionStore.commit(act) }
             val themeChanged = m.themeMode != prefs.themeMode
             if (themeChanged) prefs.themeMode = m.themeMode

@@ -216,6 +216,7 @@ object Dialogs {
         var geocoderUrl: String,
         val roadsInfo: String,
         var googleSuggest: Boolean,
+        var diagnosticLogging: Boolean,
         val googleTransport: String,
         val addressInfo: String,
         val addressAttribution: String?,
@@ -305,7 +306,12 @@ object Dialogs {
         box.addFull(ctx.label(12f, M.attr.colorPrimary, bold = true).apply { text = "DIAGNOSTICS" }, topDp = 16)
         box.addFull(ctx.label(14f).apply { text = m.diagnosticsInfo })
         box.addFull(ctx.label(13f, M.attr.colorOnSurfaceVariant).apply {
-            text = "If the app crashes, a short report is kept here: versions, the device model, where in the code it failed (never what you typed) and recent log lines. It leaves the phone only if you share it."
+            text = "If the app crashes, a short report is kept here: versions, the device model, where in the code it failed (never what you typed) and, if Diagnostic logging is on, recent log lines. It leaves the phone only if you share it."
+        })
+        val logging = MaterialSwitch(ctx).apply { text = "Diagnostic logging"; isChecked = m.diagnosticLogging }
+        box.addFull(logging, topDp = 8)
+        box.addFull(ctx.label(13f, M.attr.colorOnSurfaceVariant).apply {
+            text = "Off by default. When on, the app keeps recent system and map messages (also sent to the Android log) so a shared report has more to go on. Turning it off erases what was kept."
         })
         box.addFull(ctx.button("Share diagnostic log", M.attr.materialButtonOutlinedStyle) { shareDiagnostics() }, topDp = 4)
         box.addFull(ctx.button("Clear crash records", M.attr.borderlessButtonStyle) { clearDiagnostics() })
@@ -319,12 +325,13 @@ object Dialogs {
             m.serverUrl = url.text.toString()
             m.geocoderUrl = geo.text.toString()
             m.googleSuggest = google.isChecked
+            m.diagnosticLogging = logging.isChecked
             onSave(m)
         }
         val groupChanged = MaterialButtonToggleGroup.OnButtonCheckedListener { _, _, checked -> if (checked) apply() }
         nav.addOnButtonCheckedListener(groupChanged)
         theme.addOnButtonCheckedListener(groupChanged)
-        for (sw in listOf(auto, floating, map, google)) sw.setOnCheckedChangeListener { _, _ -> apply() }
+        for (sw in listOf(auto, floating, map, google, logging)) sw.setOnCheckedChangeListener { _, _ -> apply() }
         for (f in listOf(url, geo)) f.setOnFocusChangeListener { _, focused -> if (!focused) apply() }
         MaterialAlertDialogBuilder(ctx).setTitle("Settings").setView(ScrollView(ctx).apply { addView(box) })
             .setOnDismissListener { apply() }
